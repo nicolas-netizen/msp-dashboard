@@ -1,10 +1,12 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Dashboard from './components/Dashboard';
-import TicketsOpen from './components/TicketsOpen';
 import TicketsClosed from './components/TicketsClosed';
 import HoursSummary from './components/HoursSummary';
+import OvertimeHours from './components/OvertimeHours';
 import ClientReport from './components/ClientReport';
+import Notifications from './components/Notifications';
+
 import Sidebar from './components/Sidebar';
 
 function App() {
@@ -15,12 +17,14 @@ function App() {
         <div className="flex-1 overflow-auto">
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/tickets/open" element={<TicketsOpen />} />
             <Route path="/tickets/closed" element={<TicketsClosed />} />
             <Route path="/hours" element={<HoursSummary />} />
+                    <Route path="/overtime" element={<OvertimeHours />} />
             <Route path="/reports" element={<ClientReport />} />
+
           </Routes>
         </div>
+        <Notifications />
       </div>
     </Router>
   );

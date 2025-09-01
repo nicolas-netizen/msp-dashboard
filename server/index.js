@@ -5,7 +5,7 @@ const moment = require('moment');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // Middleware
 app.use(cors());
@@ -18,17 +18,45 @@ const API_KEY = 'd1J6amR6UnpiendBUE9QekJrTEl2ZkJvYStuWDg5QkZCWVRXVFdpSzNjSW95MFY
 // Helper function to make authenticated requests to MSP API
 const makeMSPRequest = async (endpoint, params = {}) => {
   try {
+    console.log(`🌐 Haciendo request a: ${MSP_API_BASE}${endpoint}`);
+    console.log(`🔑 Parámetros:`, params);
+    
     const response = await axios.get(`${MSP_API_BASE}${endpoint}`, {
-             headers: {
-         'X-API-Key': API_KEY,
-         'Content-Type': 'application/json'
-       },
+      headers: {
+        'X-API-Key': API_KEY,
+        'Content-Type': 'application/json'
+      },
       params
     });
+    
+    console.log(`✅ Response exitoso:`, {
+      status: response.status,
+      hasData: !!response.data,
+      dataKeys: response.data ? Object.keys(response.data) : [],
+      valueLength: response.data?.value?.length || 0
+    });
+    
     return response.data;
   } catch (error) {
-    console.error('MSP API Error:', error.response?.data || error.message);
-    throw error;
+    console.error('❌ MSP API Error:', {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      config: {
+        url: error.config?.url,
+        method: error.config?.method,
+        params: error.config?.params
+      }
+    });
+    
+    // Retornar un objeto con error en lugar de lanzar excepción
+    return {
+      error: true,
+      message: error.message,
+      status: error.response?.status,
+      details: error.response?.data
+    };
   }
 };
 
@@ -44,6 +72,98 @@ app.get('/api/test-simple', (req, res) => {
       technician: 'Andres Vidoz'
     }
   });
+});
+
+// Test endpoint para verificar la conexión básica a MSP API
+app.get('/api/test-msp-connection', async (req, res) => {
+  try {
+    console.log('🔍 Probando conexión básica a MSP API...');
+    
+    // Hacer una request simple sin parámetros
+    const response = await makeMSPRequest('/tickettimeentriesview', {
+      $top: 1
+    });
+    
+    console.log('🔍 Test MSP connection response:', response);
+    
+    res.json({
+      success: true,
+      message: 'Conexión a MSP API probada',
+      hasResponse: !!response,
+      hasError: response?.error || false,
+      hasValue: !!response?.value,
+      valueLength: response?.value?.length || 0,
+      sampleData: response?.value?.[0] || null,
+      fullResponse: response,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Error en test de conexión MSP:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Error en test de conexión: ' + error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Endpoint para explorar campos disponibles
+app.get('/api/explore-fields', async (req, res) => {
+  try {
+    console.log('🔍 Explorando campos disponibles en tickettimeentriesview...');
+    
+    // Hacer una request para obtener más datos y ver todos los campos
+    const response = await makeMSPRequest('/tickettimeentriesview', {
+      $top: 5
+    });
+    
+    if (response?.error) {
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Error explorando campos: ' + response.message
+      });
+    }
+    
+    if (!response?.value || response.value.length === 0) {
+      return res.status(500).json({ 
+        success: false, 
+        error: 'No se encontraron datos para explorar'
+      });
+    }
+    
+    // Analizar el primer registro para ver todos los campos
+    const firstEntry = response.value[0];
+    const availableFields = Object.keys(firstEntry);
+    
+    // Buscar campos que podrían contener información del cliente
+    const clientRelatedFields = availableFields.filter(field => 
+      field.toLowerCase().includes('customer') || 
+      field.toLowerCase().includes('client') ||
+      field.toLowerCase().includes('company') ||
+      field.toLowerCase().includes('name')
+    );
+    
+    console.log('🔍 Campos disponibles:', availableFields);
+    console.log('🔍 Campos relacionados con cliente:', clientRelatedFields);
+    
+    res.json({
+      success: true,
+      message: 'Campos explorados exitosamente',
+      totalFields: availableFields.length,
+      availableFields: availableFields,
+      clientRelatedFields: clientRelatedFields,
+      sampleEntry: firstEntry,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Error explorando campos:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Error explorando campos: ' + error.message
+    });
+  }
 });
 
 // Test endpoint for dashboard data
@@ -159,7 +279,7 @@ app.get('/api/test-tickettimeentriesview', async (req, res) => {
 
       // Get all time entries and filter by date range
       const timeEntries = await makeMSPRequest('/tickettimeentriesview', {
-        $select: 'timeActualHrs,StartTime,TicketId,TicketNumber,CustomerName,UserFirstName,UserLastName,UserId',
+        $select: 'TimeRoundedHrs,StartTime,TicketId,TicketNumber,CustomerName,UserFirstName,UserLastName,UserId',
         $top: 10000,
         $orderby: 'StartTime desc'
       });
@@ -218,15 +338,23 @@ app.get('/api/test-tickettimeentriesview', async (req, res) => {
 
       console.log(`📊 Filtered ${filteredEntries.length} entries for the period`);
 
-    // Generate date range array
+    // Generate date range array (excluding weekends)
     const dates = [];
     const current = moment(startDate);
     const end = moment(endDate);
     
     while (current.isSameOrBefore(end)) {
-      dates.push(current.clone());
+      // Only include weekdays (Monday = 1, Tuesday = 2, ..., Friday = 5)
+      // Sunday = 0, Saturday = 6
+      const dayOfWeek = current.day();
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        dates.push(current.clone());
+      }
       current.add(1, 'day');
     }
+    
+    console.log(`📅 Date range: ${startDate} to ${endDate}`);
+    console.log(`📅 Weekdays only: ${dates.length} days (excluded weekends)`);
 
           // Group hours by actual technician and date
       const hoursByTechnician = {};
@@ -250,7 +378,7 @@ app.get('/api/test-tickettimeentriesview', async (req, res) => {
         
         if (technician && hoursByTechnician[technician]) {
           const date = moment(entry.StartTime).format('YYYY-MM-DD');
-          const hours = parseFloat(entry.timeActualHrs) || 0;
+          const hours = parseFloat(entry.TimeRoundedHrs) || 0;
 
           if (hoursByTechnician[technician][date] !== undefined) {
             hoursByTechnician[technician][date] += hours;
@@ -286,14 +414,14 @@ const getAutomaticDateRange = (period) => {
   const today = moment();
   
   if (period === 'week') {
-    // Calcular semana actual (Lunes a Domingo)
-    const startOfWeek = today.clone().startOf('week').add(1, 'day'); // Lunes
-    const endOfWeek = startOfWeek.clone().add(6, 'days'); // Domingo
+    // Últimos 7 días (más realista que la semana actual)
+    const startDate = today.clone().subtract(7, 'days').format('YYYY-MM-DD');
+    const endDate = today.format('YYYY-MM-DD');
     
     return {
-      startDate: startOfWeek.format('YYYY-MM-DD'),
-      endDate: endOfWeek.format('YYYY-MM-DD'),
-      label: 'Esta Semana'
+      startDate,
+      endDate,
+      label: 'Últimos 7 Días'
     };
   } else if (period === 'month') {
     // Últimos 30 días
@@ -307,14 +435,14 @@ const getAutomaticDateRange = (period) => {
     };
   }
   
-  // Default: semana actual
-  const startOfWeek = today.clone().startOf('week').add(1, 'day');
-  const endOfWeek = startOfWeek.clone().add(6, 'days');
+  // Default: últimos 7 días
+  const startDate = today.clone().subtract(7, 'days').format('YYYY-MM-DD');
+  const endDate = today.format('YYYY-MM-DD');
   
   return {
-    startDate: startOfWeek.format('YYYY-MM-DD'),
-    endDate: endOfWeek.format('YYYY-MM-DD'),
-    label: 'Esta Semana'
+    startDate,
+    endDate,
+    label: 'Últimos 7 Días'
   };
 };
 
@@ -560,62 +688,7 @@ app.get('/api/hours/summary', async (req, res) => {
   }
 });
 
-// 4. Reporte de horas para cliente
-app.get('/api/reports/client-hours', async (req, res) => {
-  try {
-    const { clientId, startDate, endDate, format = 'json' } = req.query;
-    
-    if (!clientId) {
-      return res.status(400).json({ error: 'Se requiere clientId' });
-    }
-    
-    const timeEntries = await makeMSPRequest('/TimeEntries', {
-      $filter: `ClientId eq ${clientId} and Date ge ${startDate} and Date le ${endDate}`,
-      $select: 'Id,Description,Hours,Date,TicketId,TicketTitle,TechnicianName',
-      $orderby: 'Date desc'
-    });
-    
-    // Calculate totals
-    const totalHours = timeEntries.value?.reduce((sum, entry) => 
-      sum + (parseFloat(entry.Hours) || 0), 0) || 0;
-    
-    const report = {
-      clientId,
-      period: { startDate, endDate },
-      totalHours,
-      entries: timeEntries.value || [],
-      generatedAt: new Date().toISOString()
-    };
-    
-    if (format === 'csv') {
-      // Generate CSV format
-      const csv = generateCSV(report);
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename=client-hours-${clientId}-${startDate}.csv`);
-      res.send(csv);
-    } else {
-      res.json(report);
-    }
-  } catch (error) {
-    res.status(500).json({ error: 'Error al generar reporte de horas' });
-  }
-});
-
-// Helper function to generate CSV
-function generateCSV(report) {
-  const headers = ['Fecha', 'Ticket', 'Descripción', 'Horas', 'Técnico'];
-  const rows = report.entries.map(entry => [
-    entry.Date,
-    entry.TicketId,
-    entry.Description,
-    entry.Hours,
-    entry.TechnicianName
-  ]);
-  
-  return [headers, ...rows]
-    .map(row => row.map(cell => `"${cell}"`).join(','))
-    .join('\n');
-}
+// 4. Reporte de horas para cliente - ELIMINADO (duplicado con endpoint correcto en línea 2143)
 
 // Get available ticket statuses from MSP Manager API
 app.get('/api/statuses', async (req, res) => {
@@ -1047,7 +1120,7 @@ app.get('/api/dashboard/weekly-activity', async (req, res) => {
     let timeEntries = [];
     try {
       const timeEntriesResponse = await makeMSPRequest('/tickettimeentriesview', {
-        $select: 'timeActualHrs,StartTime,TicketId,TicketNumber,CustomerName',
+        $select: 'TimeRoundedHrs,StartTime,TicketId,TicketNumber,CustomerName',
         $top: 5000,
         $orderby: 'StartTime desc'
       });
@@ -1105,12 +1178,19 @@ app.get('/api/dashboard/weekly-activity', async (req, res) => {
     let weeklyData = [];
     
     if (period === 'week') {
-      // Weekly view: last 7 days
+      // Weekly view: last 7 days (weekdays only)
       const daysOfWeek = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
       
       for (let i = 0; i < 7; i++) {
         const targetDate = moment().subtract(6 - i, 'days');
-        const dayName = daysOfWeek[targetDate.day()];
+        const dayOfWeek = targetDate.day();
+        
+        // Skip weekends (Sunday = 0, Saturday = 6)
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+          continue;
+        }
+        
+        const dayName = daysOfWeek[dayOfWeek];
         const dateStr = targetDate.format('YYYY-MM-DD');
         
         // Count tickets for this day
@@ -1133,7 +1213,7 @@ app.get('/api/dashboard/weekly-activity', async (req, res) => {
           }
         }).reduce((sum, entry) => {
           try {
-            return sum + (parseFloat(entry.TimeRoundedHrs) || 0);
+            return sum + (parseFloat(entry.timeActualHrs) || 0);
           } catch (error) {
             console.error('Error parsing hours:', error.message);
             return sum;
@@ -1179,7 +1259,7 @@ app.get('/api/dashboard/weekly-activity', async (req, res) => {
           }
         }).reduce((sum, entry) => {
           try {
-            return sum + (parseFloat(entry.TimeRoundedHrs) || 0);
+            return sum + (parseFloat(entry.timeActualHrs) || 0);
           } catch (error) {
             console.error('Error parsing hours:', error.message);
             return sum;
@@ -1341,7 +1421,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
       
               // Get ALL time entries and filter in JavaScript (avoid ECONNRESET)
         const timeEntries = await makeMSPRequest('/tickettimeentriesview', {
-          $select: 'timeActualHrs,StartTime,TicketId,TicketNumber,CustomerName',
+          $select: 'TimeRoundedHrs,StartTime,TicketId,TicketNumber,CustomerName',
           $top: 5000,
           $orderby: 'StartTime desc'
         });
@@ -1349,7 +1429,8 @@ app.get('/api/dashboard/stats', async (req, res) => {
       if (timeEntries.value && timeEntries.value.length > 0) {
         console.log(`📊 Found ${timeEntries.value.length} total time entries`);
         
-        // Filter by date range in JavaScript (more reliable)
+        // Filter by date range in JavaScript (more reliable) - weekdays only
+        const daysOfWeek = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
         const filteredEntries = timeEntries.value.filter(entry => {
           try {
             const entryDate = moment(entry.StartTime);
@@ -1359,11 +1440,15 @@ app.get('/api/dashboard/stats', async (req, res) => {
             // Only include entries that are strictly within the date range
             const isInRange = entryDate.isBetween(startDate, endDate, 'day', '[]');
             
-            if (isInRange) {
-              console.log(`✅ Entry ${entry.TicketNumber} (${entry.CustomerName}): ${entry.TimeRoundedHrs}h on ${entryDate.format('YYYY-MM-DD')}`);
+            // Also exclude weekends
+            const dayOfWeek = entryDate.day();
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // Sunday = 0, Saturday = 6
+            
+            if (isInRange && !isWeekend) {
+              console.log(`✅ Entry ${entry.TicketNumber} (${entry.CustomerName}): ${entry.TimeRoundedHrs}h on ${entryDate.format('YYYY-MM-DD')} (${entryDate.format('dddd')})`);
             }
             
-            return isInRange;
+            return isInRange && !isWeekend;
           } catch (error) {
             console.error('Error filtering time entry date:', error.message);
             return false;
@@ -1372,9 +1457,9 @@ app.get('/api/dashboard/stats', async (req, res) => {
         
         console.log(`📊 Filtered ${filteredEntries.length} entries for the period`);
         
-        // Sum real hours from timeActualHrs (exact hours worked)
+        // Sum real hours from TimeRoundedHrs (rounded hours)
         totalHours = filteredEntries.reduce((sum, entry) => {
-          const hours = parseFloat(entry.timeActualHrs) || 0;
+          const hours = parseFloat(entry.TimeRoundedHrs) || 0;
           return sum + hours;
         }, 0);
         
@@ -1584,7 +1669,862 @@ app.get('/api/test-time-entries-simple', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// Debug endpoint to see exact field names and values
+app.get('/api/debug-fields', async (req, res) => {
+  try {
+    console.log('🔍 Debug: Checking exact field names and values...');
+    
+    // Get a few entries to see what fields are actually available
+    const sampleEntries = await makeMSPRequest('/tickettimeentriesview', {
+      $top: 3,
+      $select: '*'
+    });
+    
+    if (sampleEntries.value && sampleEntries.value.length > 0) {
+      console.log('✅ Sample entries found:', sampleEntries.value.length);
+      
+      // Log the first entry with all its fields
+      const firstEntry = sampleEntries.value[0];
+      console.log('📋 First entry fields:', Object.keys(firstEntry));
+      console.log('📊 First entry values:', firstEntry);
+      
+      // Check specific hour-related fields
+      const hourFields = ['timeActualHrs', 'TimeRoundedHrs', 'timeActual', 'TimeRounded', 'Hours', 'time'];
+      const availableHourFields = {};
+      
+      hourFields.forEach(field => {
+        if (firstEntry.hasOwnProperty(field)) {
+          availableHourFields[field] = firstEntry[field];
+        }
+      });
+      
+      console.log('⏰ Available hour fields:', availableHourFields);
+      
+      res.json({
+        success: true,
+        totalEntries: sampleEntries.value.length,
+        allFields: Object.keys(firstEntry),
+        firstEntry: firstEntry,
+        availableHourFields: availableHourFields,
+        message: 'Check server console for detailed field analysis'
+      });
+    } else {
+      res.json({
+        success: false,
+        message: 'No entries found'
+      });
+    }
+  } catch (error) {
+    console.error('❌ Debug endpoint error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Debug endpoint error',
+      error: error.message
+    });
+  }
+});
+
+// Overtime hours endpoint
+app.get('/api/overtime/hours', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'startDate and endDate are required'
+      });
+    }
+
+    console.log('🔍 Fetching overtime hours...', { startDate, endDate });
+
+    // Get time entries with rate information - using the correct 'rate' field
+    const timeEntries = await makeMSPRequest('/tickettimeentriesview', {
+      $select: 'TimeRoundedHrs,StartTime,TicketId,TicketNumber,CustomerName,UserFirstName,UserLastName,UserId,rate,rateName',
+      $top: 10000,
+      $orderby: 'StartTime desc'
+    });
+
+    if (!timeEntries.value || timeEntries.value.length === 0) {
+      return res.json({
+        success: true,
+        overtimeData: [],
+        message: 'No time entries found for the period'
+      });
+    }
+
+    console.log(`📊 Found ${timeEntries.value.length} total time entries`);
+
+    // Filter entries by date range and exclude weekends
+    let debugCount = 0;
+    const filteredEntries = timeEntries.value.filter(entry => {
+      try {
+        const entryDate = moment(entry.StartTime);
+        const start = moment(startDate).startOf('day');
+        const end = moment(endDate).endOf('day');
+        
+        // Check if entry is within date range
+        const isInRange = entryDate.isBetween(start, end, 'day', '[]');
+        
+        // Debug logging for first few entries
+        if (debugCount < 5) {
+          console.log(`🔍 Date filter: ${entryDate.format('YYYY-MM-DD')} - InRange: ${isInRange}`);
+          debugCount++;
+        }
+        
+        return isInRange;
+      } catch (error) {
+        console.error('❌ Error filtering entry date:', error.message);
+        return false;
+      }
+    });
+
+    console.log(`📊 Filtered ${filteredEntries.length} entries for overtime calculation`);
+
+    // Group hours by user and rate
+    const userHours = {};
+    
+    filteredEntries.forEach(entry => {
+      const firstName = entry.UserFirstName || '';
+      const lastName = entry.UserLastName || '';
+      const userName = `${firstName} ${lastName}`.trim();
+      const userId = entry.UserId || `${firstName}-${lastName}`;
+      
+      if (!userName || userName === 'Sin Técnico') {
+        return; // Skip entries without technician
+      }
+      
+      // Get rate and convert to percentage - using the correct 'Rate' field (PascalCase)
+      const rate = parseFloat(entry.Rate) || 1.0;
+      let ratePercentage = '';
+      
+      // Debug logging for rate processing
+      if (entry.Rate !== undefined && entry.Rate !== null) {
+        console.log(`🔍 Processing entry: ${entry.UserFirstName} ${entry.UserLastName} - Rate: ${entry.Rate}, Hours: ${entry.TimeRoundedHrs}`);
+      } else {
+        console.log(`⚠️ No Rate field for: ${entry.UserFirstName} ${entry.UserLastName}`);
+      }
+      
+      if (rate === 1.5) {
+        ratePercentage = '50%';
+        console.log(`✅ Found 50% rate: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h`);
+      } else if (rate === 2.0) {
+        ratePercentage = '100%';
+        console.log(`✅ Found 100% rate: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h`);
+      } else {
+        if (rate !== 1.0) {
+          console.log(`⚠️ Skipping rate ${rate}: ${entry.UserFirstName} ${entry.UserLastName}`);
+        }
+        return; // Skip normal hours (rate 1.0)
+      }
+      
+      const hours = parseFloat(entry.TimeRoundedHrs) || 0;
+      
+      if (hours > 0) {
+        if (!userHours[userId]) {
+          userHours[userId] = {
+            userId: userId,
+            userName: userName,
+            rates: {}
+          };
+        }
+        
+        if (!userHours[userId].rates[ratePercentage]) {
+          userHours[userId].rates[ratePercentage] = 0;
+        }
+        
+        userHours[userId].rates[ratePercentage] += hours;
+      }
+    });
+
+    // Convert to array format and calculate totals
+    const overtimeData = Object.values(userHours).map(user => {
+      const rates = Object.entries(user.rates).map(([rate, hours]) => ({
+        rate: rate,
+        hours: hours
+      }));
+      
+      // Sort rates: 50% first, then 100%
+      rates.sort((a, b) => {
+        if (a.rate === '50%') return -1;
+        if (b.rate === '50%') return 1;
+        return 0;
+      });
+      
+      return {
+        ...user,
+        rates: rates
+      };
+    });
+
+    // Sort users by total hours (descending)
+    overtimeData.sort((a, b) => {
+      const totalA = a.rates.reduce((sum, rate) => sum + rate.hours, 0);
+      const totalB = b.rates.reduce((sum, rate) => sum + rate.hours, 0);
+      return totalB - totalA;
+    });
+
+    console.log(`✅ Processed ${overtimeData.length} users with overtime hours`);
+    
+    // Log some sample data for debugging
+    overtimeData.slice(0, 3).forEach(user => {
+      console.log(`👤 ${user.userName}:`, user.rates.map(r => `${r.rate}: ${r.hours}h`).join(', '));
+    });
+    
+    // Log sample entries to see what fields are available
+    if (filteredEntries.length > 0) {
+      const sampleEntry = filteredEntries[0];
+      console.log('🔍 Sample entry fields:', Object.keys(sampleEntry));
+      console.log('🔍 Sample entry values:', {
+        Rate: sampleEntry.Rate,
+        RateName: sampleEntry.RateName,
+        TimeRoundedHrs: sampleEntry.TimeRoundedHrs,
+        UserFirstName: sampleEntry.UserFirstName,
+        UserLastName: sampleEntry.UserLastName,
+        CustomerName: sampleEntry.CustomerName
+      });
+    }
+
+    res.json({
+      success: true,
+      overtimeData: overtimeData,
+      period: {
+        startDate: startDate,
+        endDate: endDate,
+        totalEntries: filteredEntries.length,
+        totalUsers: overtimeData.length
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching overtime hours:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching overtime hours',
+      error: error.message
+    });
+  }
+});
+
+// Simple test endpoint for overtime hours (returns sample data)
+app.get('/api/overtime/test', async (req, res) => {
+  try {
+    console.log('🧪 Test endpoint for overtime hours called');
+    
+    // Return sample data to test the frontend
+    const sampleData = [
+      {
+        userId: '1',
+        userName: 'Esteban Bressan',
+        rates: [
+          { rate: '50%', hours: 2.0 }
+        ]
+      },
+      {
+        userId: '2',
+        userName: 'Julian Vazzano',
+        rates: [
+          { rate: '50%', hours: 7.0 },
+          { rate: '100%', hours: 31.0 }
+        ]
+      },
+      {
+        userId: '3',
+        userName: 'Mauricio Marquez',
+        rates: [
+          { rate: '50%', hours: 1.0 },
+          { rate: '100%', hours: 9.0 }
+        ]
+      }
+    ];
+    
+    res.json({
+      success: true,
+      overtimeData: sampleData,
+      message: 'Sample data for testing frontend'
+    });
+    
+  } catch (error) {
+    console.error('❌ Test endpoint error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Test endpoint error',
+      error: error.message
+    });
+  }
+});
+
+// Debug endpoint to show overtime data source
+app.get('/api/overtime/debug', async (req, res) => {
+  try {
+    console.log('🔍 Debug endpoint for overtime hours called');
+    
+    const { startDate, endDate } = req.query;
+    
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'startDate and endDate are required'
+      });
+    }
+
+    console.log('🔍 Debug: Fetching overtime hours...', { startDate, endDate });
+
+    // Get time entries with rate information
+    const timeEntries = await makeMSPRequest('/tickettimeentriesview', {
+      $select: 'TimeRoundedHrs,StartTime,TicketId,TicketNumber,CustomerName,UserFirstName,UserLastName,UserId,rate,rateName',
+      $top: 10000,
+      $orderby: 'StartTime desc'
+    });
+
+    if (!timeEntries.value || timeEntries.value.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No time entries found',
+        dataSource: 'API - tickettimeentriesview',
+        totalEntries: 0,
+        filteredEntries: 0,
+        sampleEntries: []
+      });
+    }
+
+    console.log(`📊 Debug: Found ${timeEntries.value.length} total time entries`);
+
+    // Filter entries by date range
+    let debugCount = 0;
+    const filteredEntries = timeEntries.value.filter(entry => {
+      try {
+        const entryDate = moment(entry.StartTime);
+        const start = moment(startDate).startOf('day');
+        const end = moment(endDate).endOf('day');
+        
+        const isInRange = entryDate.isBetween(start, end, 'day', '[]');
+        
+        if (debugCount < 5) {
+          console.log(`🔍 Debug Date filter: ${entryDate.format('YYYY-MM-DD')} - InRange: ${isInRange}`);
+          debugCount++;
+        }
+        
+        return isInRange;
+      } catch (error) {
+        return false;
+      }
+    });
+
+    console.log(`📊 Debug: Filtered ${filteredEntries.length} entries for the period`);
+
+    // Show sample entries with rate information
+    const sampleEntries = filteredEntries.slice(0, 10).map(entry => ({
+      UserName: `${entry.UserFirstName} ${entry.UserLastName}`,
+      Rate: entry.rate,
+      RateName: entry.rateName,
+      Hours: entry.TimeRoundedHrs,
+      Date: entry.StartTime,
+      Customer: entry.CustomerName
+    }));
+
+    // Count entries by rate
+    const rateCounts = {};
+    filteredEntries.forEach(entry => {
+      const rate = entry.rate || 'undefined';
+      rateCounts[rate] = (rateCounts[rate] || 0) + 1;
+    });
+
+    res.json({
+      success: true,
+      message: 'Debug data from API',
+      dataSource: 'API - tickettimeentriesview',
+      period: { startDate, endDate },
+      totalEntries: timeEntries.value.length,
+      filteredEntries: filteredEntries.length,
+      rateCounts: rateCounts,
+      sampleEntries: sampleEntries,
+      hasOvertimeRates: Object.keys(rateCounts).some(rate => rate === '1.5' || rate === '2.0')
+    });
+
+  } catch (error) {
+    console.error('❌ Debug endpoint error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Debug endpoint error',
+      error: error.message
+    });
+  }
+});
+
+// Función para obtener IP interna automáticamente
+function getLocalIP() {
+  const { networkInterfaces } = require('os');
+  const nets = networkInterfaces();
+  
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      // Saltar interfaces no IPv4 o internas
+      if (net.family === 'IPv4' && !net.internal) {
+        // Preferir IPs que empiecen con 192.168, 10., 172.
+        if (net.address.startsWith('192.168.') || 
+            net.address.startsWith('10.') || 
+            net.address.startsWith('172.')) {
+          return net.address;
+        }
+      }
+    }
+  }
+  
+  // Fallback: usar la primera IP IPv4 no interna
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) {
+        return net.address;
+      }
+    }
+  }
+  
+  return 'localhost'; // Fallback si no se encuentra IP
+}
+
+const LOCAL_IP = getLocalIP();
+
+// Endpoint para reportes de horas por cliente
+app.get('/api/reports/client-hours', async (req, res) => {
+  try {
+    const { clientId, startDate, endDate, format } = req.query;
+    
+    console.log(`Generando reporte para cliente ${clientId} desde ${startDate} hasta ${endDate}`);
+    
+    // Obtener todas las entradas de tiempo para el período
+    const timeEntriesResponse = await makeMSPRequest('/tickettimeentriesview', {
+      $top: 10000,
+      $select: 'TimeRoundedHrs,StartTime,TicketId,TicketNumber,CustomerName,UserFirstName,UserLastName,UserId,Description',
+      $orderby: 'StartTime desc'
+    });
+
+    console.log('📋 Response de makeMSPRequest para reporte:', {
+      hasResponse: !!timeEntriesResponse,
+      hasValue: !!timeEntriesResponse?.value,
+      valueLength: timeEntriesResponse?.value?.length || 0,
+      sampleData: timeEntriesResponse?.value?.[0] || null
+    });
+
+    if (!timeEntriesResponse || !timeEntriesResponse.value) {
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Error al obtener datos de la API' 
+      });
+    }
+
+    const allEntries = timeEntriesResponse.value;
+    console.log(`Total de entradas obtenidas: ${allEntries.length}`);
+
+    // Filtrar por cliente y fechas
+    const filteredEntries = allEntries.filter(entry => {
+      try {
+        const entryDate = moment(entry.StartTime);
+        const isInRange = entryDate.isBetween(startDate, endDate, 'day', '[]');
+        
+        // Mejorar la comparación de clientes
+        const isClientMatch = entry.CustomerName && 
+          (entry.CustomerName.toLowerCase() === clientId.toLowerCase() ||
+           entry.CustomerName.toLowerCase().includes(clientId.toLowerCase()) ||
+           clientId.toLowerCase().includes(entry.CustomerName.toLowerCase()));
+        
+        if (isInRange && isClientMatch) {
+          console.log(`✅ Entry filtrada: ${entry.CustomerName} - ${entry.TimeRoundedHrs}h - ${entry.StartTime}`);
+        }
+        
+        return isInRange && isClientMatch;
+      } catch (error) {
+        console.error('❌ Error filtrando entry:', error.message);
+        return false;
+      }
+    });
+
+    console.log(`Entradas filtradas para cliente ${clientId}: ${filteredEntries.length}`);
+    
+    // Debug: mostrar algunas entradas filtradas
+    if (filteredEntries.length > 0) {
+      console.log('🔍 Primeras entradas filtradas:');
+      filteredEntries.slice(0, 3).forEach((entry, index) => {
+        console.log(`  ${index + 1}. ${entry.CustomerName} - Ticket ${entry.TicketNumber} - ${entry.TimeRoundedHrs}h - ${entry.StartTime}`);
+      });
+    } else {
+      console.log('⚠️ No se encontraron entradas para este cliente y período');
+      console.log('🔍 Debug: clientId recibido:', clientId);
+      console.log('🔍 Debug: fechas recibidas:', { startDate, endDate });
+      console.log('🔍 Debug: total entradas disponibles:', allEntries.length);
+      console.log('🔍 Debug: clientes disponibles:', [...new Set(allEntries.map(e => e.CustomerName))].slice(0, 10));
+    }
+
+    // Agrupar por ticket y calcular totales
+    const ticketsMap = new Map();
+    
+    filteredEntries.forEach(entry => {
+      const ticketId = entry.TicketId;
+      const hours = parseFloat(entry.TimeRoundedHrs) || 0;
+      
+      if (!ticketsMap.has(ticketId)) {
+        ticketsMap.set(ticketId, {
+          ticketId: entry.TicketNumber || entry.TicketId,
+          customerName: entry.CustomerName,
+          totalHours: 0,
+          entries: [],
+          technicians: new Set()
+        });
+      }
+      
+      const ticket = ticketsMap.get(ticketId);
+      ticket.totalHours += hours;
+      ticket.technicians.add(`${entry.UserFirstName} ${entry.UserLastName}`);
+      
+      ticket.entries.push({
+        Date: entry.StartTime,
+        TicketId: entry.TicketNumber || entry.TicketId,
+        TicketTitle: `Ticket #${entry.TicketNumber || entry.TicketId}`,
+        Description: entry.Description || 'Sin descripción',
+        Hours: hours,
+        TechnicianName: `${entry.UserFirstName} ${entry.UserLastName}`
+      });
+    });
+
+    // Convertir a array y ordenar por fecha
+    const tickets = Array.from(ticketsMap.values()).map(ticket => ({
+      ...ticket,
+      technicians: Array.from(ticket.technicians).join(', '),
+      entries: ticket.entries.sort((a, b) => moment(b.Date).valueOf() - moment(a.Date).valueOf())
+    }));
+
+    // Calcular totales generales
+    const totalHours = tickets.reduce((sum, ticket) => sum + ticket.totalHours, 0);
+    const totalTickets = tickets.length;
+
+    const reportData = {
+      success: true,
+      clientName: filteredEntries[0]?.CustomerName || 'Cliente',
+      period: { startDate, endDate },
+      totalHours: totalHours.toFixed(1),
+      totalTickets,
+      tickets,
+      entries: filteredEntries.map(entry => ({
+        Date: entry.StartTime,
+        TicketId: entry.TicketNumber || entry.TicketId,
+        TicketTitle: `Ticket #${entry.TicketNumber || entry.TicketId}`,
+        Description: entry.Description || 'Sin descripción',
+        Hours: parseFloat(entry.TimeRoundedHrs) || 0,
+        TechnicianName: `${entry.UserFirstName} ${entry.UserLastName}`
+      })),
+      generatedAt: new Date().toISOString()
+    };
+
+    // Si se solicita CSV, generar y enviar archivo
+    if (format === 'csv') {
+      const csvContent = generateCSV(reportData);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename=reporte-horas-${clientId}-${startDate}-${endDate}.csv`);
+      return res.send(csvContent);
+    }
+
+    // Enviar JSON por defecto
+    res.json(reportData);
+
+  } catch (error) {
+    console.error('Error en reporte de horas por cliente:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Error interno del servidor' 
+    });
+  }
+});
+
+// Endpoint para obtener lista de clientes - ELIMINADO (DUPLICADO)
+
+// Endpoint de prueba para clientes
+app.get('/api/clients/test', async (req, res) => {
+  try {
+    console.log('Endpoint de prueba de clientes...');
+    
+    // Datos de prueba
+    const testClients = [
+      { id: 'Cliente Test 1', name: 'Cliente Test 1', email: 'test1@cliente.com' },
+      { id: 'Cliente Test 2', name: 'Cliente Test 2', email: 'test2@cliente.com' }
+    ];
+    
+    res.json({ success: true, clients: testClients, message: 'Datos de prueba' });
+  } catch (error) {
+    console.error('Error en endpoint de prueba:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint de debug para clientes
+app.get('/api/clients/debug', async (req, res) => {
+  try {
+    console.log('🔍 Debug endpoint de clientes...');
+    
+    // Probar la función makeMSPRequest
+    const testResponse = await makeMSPRequest('/tickettimeentriesview', {
+      $top: 5,
+      $select: 'CustomerName'
+    });
+    
+    console.log('🔍 Test response completo:', testResponse);
+    console.log('🔍 Test response value:', testResponse?.value);
+    
+    res.json({
+      success: true,
+      debug: {
+        hasResponse: !!testResponse,
+        hasValue: !!testResponse?.value,
+        valueLength: testResponse?.value?.length || 0,
+        sampleData: testResponse?.value?.slice(0, 2) || [],
+        fullResponse: testResponse,
+        timestamp: new Date().toISOString()
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error en debug endpoint:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Error en debug: ' + error.message,
+      stack: error.stack
+    });
+  }
+});
+
+// Endpoint simple para obtener clientes
+app.get('/api/clients', async (req, res) => {
+  try {
+    console.log('📋 Obteniendo lista de clientes...');
+    
+    // Obtener clientes directamente desde tickettimeentriesview
+    const response = await makeMSPRequest('/tickettimeentriesview', {
+      $top: 10000,
+      $select: 'CustomerName',
+      $orderby: 'CustomerName'
+    });
+
+    console.log('📋 Response de makeMSPRequest:', {
+      hasResponse: !!response,
+      hasValue: !!response?.value,
+      valueLength: response?.value?.length || 0,
+      sampleData: response?.value?.[0] || null
+    });
+
+    // Verificar si la respuesta es válida
+    if (!response || !response.value) {
+      console.error('❌ Response inválido de makeMSPRequest:', response);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'No se pudo obtener datos de la API de MSP Manager',
+        response: response
+      });
+    }
+
+    // Extraer nombres únicos de clientes
+    const uniqueClients = [...new Set(
+      response.value
+        .map(entry => entry.CustomerName)
+        .filter(name => name && name.trim() !== '')
+    )].sort();
+
+    console.log(`✅ Clientes obtenidos: ${uniqueClients.length}`);
+
+    const clients = uniqueClients.map((name, index) => ({
+      id: index + 1,
+      name: name,
+      email: `${name.toLowerCase().replace(/\s+/g, '.')}@cliente.com`
+    }));
+
+    res.json({
+      success: true,
+      clients: clients,
+      total: clients.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error obteniendo clientes:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Error interno del servidor: ' + error.message
+    });
+  }
+});
+
+
+
+// Función para generar CSV
+function generateCSV(reportData) {
+  const headers = ['Fecha', 'Ticket', 'Descripción', 'Horas', 'Técnico', 'Cliente'];
+  const rows = reportData.entries.map(entry => [
+    moment(entry.Date).format('DD/MM/YYYY'),
+    entry.TicketId,
+    entry.Description,
+    entry.Hours,
+    entry.TechnicianName,
+    reportData.clientName
+  ]);
+  
+  const csvContent = [headers, ...rows]
+    .map(row => row.map(field => `"${field}"`).join(','))
+    .join('\n');
+  
+  return csvContent;
+}
+
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
   console.log(`Dashboard disponible en: http://localhost:${PORT}`);
+  console.log(`Acceso desde red interna: http://${LOCAL_IP}:${PORT}`);
+  console.log(`IP detectada automáticamente: ${LOCAL_IP}`);
 });
+
+// Sistema de alertas automáticas
+const checkForAlerts = async () => {
+  try {
+    console.log('🔍 Verificando alertas automáticas...');
+    
+    // Verificar tickets sin asignar por más de 24 horas
+    const unassignedTickets = await makeMSPRequest('/TicketsView', {
+      $filter: "TicketStatusName eq 'New' or TicketStatusName eq 'Open'",
+      $select: 'TicketId,TicketNumber,TicketTitle,CreatedDate,CustomerName',
+      $orderby: 'CreatedDate desc'
+    });
+    
+    const criticalTickets = (unassignedTickets.value || []).filter(ticket => {
+      const createdDate = new Date(ticket.CreatedDate);
+      const hoursSinceCreation = (Date.now() - createdDate.getTime()) / (1000 * 60 * 60);
+      return hoursSinceCreation > 24;
+    });
+    
+    if (criticalTickets.length > 0) {
+      console.log(`⚠️ ${criticalTickets.length} tickets críticos sin asignar por más de 24 horas`);
+      // Aquí podrías enviar notificaciones por email, Slack, etc.
+    }
+    
+    // Verificar horas extras excesivas
+    const overtimeData = await makeMSPRequest('/tickettimeentriesview', {
+      $select: 'TimeRoundedHrs,StartTime,UserFirstName,UserLastName',
+      $top: 1000,
+      $orderby: 'StartTime desc'
+    });
+    
+    const today = moment().format('YYYY-MM-DD');
+    const todayEntries = (overtimeData.value || []).filter(entry => 
+      moment(entry.StartTime).format('YYYY-MM-DD') === today
+    );
+    
+    const totalHoursToday = todayEntries.reduce((sum, entry) => 
+      sum + (parseFloat(entry.TimeRoundedHrs) || 0), 0
+    );
+    
+    if (totalHoursToday > 12) {
+      console.log(`⚠️ Horas totales hoy: ${totalHoursToday}h - Posible sobrecarga`);
+    }
+    
+    // Verificar clientes sin actividad reciente
+    const recentTickets = await makeMSPRequest('/TicketsView', {
+      $filter: `CreatedDate ge ${moment().subtract(7, 'days').format('YYYY-MM-DD')}`,
+      $select: 'CustomerName',
+      $top: 1000
+    });
+    
+    const activeClients = [...new Set(recentTickets.value?.map(t => t.CustomerName) || [])];
+    console.log(`📊 Clientes activos en los últimos 7 días: ${activeClients.length}`);
+    
+  } catch (error) {
+    console.error('❌ Error en verificación de alertas:', error.message);
+  }
+};
+
+// Ejecutar verificaciones automáticas cada 30 minutos
+setInterval(checkForAlerts, 30 * 60 * 1000);
+
+// Ejecutar una vez al inicio
+checkForAlerts();
+
+// Función para generar reportes automáticos
+const generateAutomaticReports = async () => {
+  try {
+    console.log('📊 Generando reportes automáticos...');
+    
+    const today = moment();
+    const startOfWeek = today.clone().startOf('week').add(1, 'day');
+    const endOfWeek = startOfWeek.clone().add(6, 'days');
+    
+    // Reporte semanal automático
+    const weeklyReport = {
+      period: {
+        startDate: startOfWeek.format('YYYY-MM-DD'),
+        endDate: endOfWeek.format('YYYY-MM-DD'),
+        label: 'Reporte Semanal Automático'
+      },
+      generatedAt: new Date().toISOString(),
+      data: {}
+    };
+    
+    // Obtener estadísticas semanales
+    const [statsResponse, weeklyActivityResponse, topClientsResponse] = await Promise.all([
+      makeMSPRequest('/TicketsView', {
+        $filter: `CreatedDate ge ${startOfWeek.format('YYYY-MM-DD')} and CreatedDate le ${endOfWeek.format('YYYY-MM-DD')}`,
+        $select: 'TicketId,TicketStatusCode,TicketStatusName'
+      }),
+      makeMSPRequest('/tickettimeentriesview', {
+        $filter: `StartTime ge ${startOfWeek.format('YYYY-MM-DD')} and StartTime le ${endOfWeek.format('YYYY-MM-DD')}`,
+        $select: 'TimeRoundedHrs,StartTime,CustomerName'
+      }),
+      makeMSPRequest('/TicketsView', {
+        $filter: `CreatedDate ge ${startOfWeek.format('YYYY-MM-DD')} and CreatedDate le ${endOfWeek.format('YYYY-MM-DD')}`,
+        $select: 'CustomerName'
+      })
+    ]);
+    
+    // Procesar datos del reporte
+    const tickets = statsResponse.value || [];
+    const timeEntries = weeklyActivityResponse.value || [];
+    const clientTickets = topClientsResponse.value || [];
+    
+    weeklyReport.data = {
+      totalTickets: tickets.length,
+      openTickets: tickets.filter(t => t.TicketStatusName !== 'Complete').length,
+      closedTickets: tickets.filter(t => t.TicketStatusName === 'Complete').length,
+      totalHours: timeEntries.reduce((sum, entry) => sum + (parseFloat(entry.TimeRoundedHrs) || 0), 0),
+      topClients: Object.entries(
+        clientTickets.reduce((acc, ticket) => {
+          acc[ticket.CustomerName] = (acc[ticket.CustomerName] || 0) + 1;
+          return acc;
+        }, {})
+      ).sort((a, b) => b[1] - a[1]).slice(0, 5)
+    };
+    
+    console.log('✅ Reporte semanal generado:', weeklyReport.data);
+    
+    // Aquí podrías guardar el reporte en una base de datos o enviarlo por email
+    // saveReportToDatabase(weeklyReport);
+    // sendReportByEmail(weeklyReport);
+    
+  } catch (error) {
+    console.error('❌ Error generando reportes automáticos:', error.message);
+  }
+};
+
+// Generar reportes automáticos cada domingo a las 23:00
+const scheduleWeeklyReports = () => {
+  const now = new Date();
+  const daysUntilSunday = (7 - now.getDay()) % 7;
+  const nextSunday = new Date(now);
+  nextSunday.setDate(now.getDate() + daysUntilSunday);
+  nextSunday.setHours(23, 0, 0, 0);
+  
+  const timeUntilNextSunday = nextSunday.getTime() - now.getTime();
+  
+  setTimeout(() => {
+    generateAutomaticReports();
+    // Programar para cada domingo siguiente
+    setInterval(generateAutomaticReports, 7 * 24 * 60 * 60 * 1000);
+  }, timeUntilNextSunday);
+  
+  console.log(`📅 Reporte semanal programado para: ${nextSunday.toLocaleString()}`);
+};
+
+// Iniciar programación de reportes
+scheduleWeeklyReports();

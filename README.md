@@ -1,176 +1,206 @@
-# MSP Dashboard
+# 🚀 MSP Dashboard
 
-Dashboard completo para gestión de tickets y horas de MSP Manager, con análisis en tiempo real y reportes detallados.
+Dashboard para MSP Manager con reportes de tickets y horas trabajadas.
 
-## 🚀 Características
+## 📋 Características
 
-- **Dashboard Principal**: Estadísticas en tiempo real de tickets y horas
-- **Gestión de Tickets**: Tickets abiertos y cerrados con filtros avanzados
-- **Tabla de Horas**: Vista detallada de horas por técnico (similar a MSP Manager)
-- **Reportes de Cliente**: Análisis de actividad por cliente
-- **API Integrada**: Conexión directa con MSP Manager API
+- 📊 Dashboard con estadísticas en tiempo real
+- 🎫 Gestión de tickets abiertos y cerrados
+- ⏰ Reportes de horas trabajadas
+- 📈 Gráficos y métricas visuales
+- 🔔 Sistema de notificaciones
+- 🤖 Alertas automáticas
+- 📋 Reportes semanales automáticos
 
-## 🛠️ Tecnologías
+## 🛠️ Desarrollo Local
 
-- **Backend**: Node.js + Express
-- **Frontend**: React + Tailwind CSS
-- **Base de Datos**: MSP Manager API (OData)
-- **Gráficos**: Recharts
-- **Iconos**: Lucide React
+### Requisitos Previos
 
-## 📋 Requisitos
+- Node.js 16+ 
+- npm 8+
 
-- Node.js 18+ 
-- npm o yarn
-- Acceso a MSP Manager API
-- API Key de MSP Manager
+### Inicio Rápido
 
-## 🚀 Instalación
-
-### 1. Clonar el repositorio
+#### Windows
 ```bash
-git clone https://github.com/tu-usuario/msp-dashboard.git
-cd msp-dashboard
-```
+# Doble clic en el archivo
+start-local.bat
 
-### 2. Instalar dependencias
-```bash
-# Instalar dependencias del servidor
-npm install
-
-# Instalar dependencias del cliente
-cd client
-npm install
-cd ..
-```
-
-### 3. Configurar variables de entorno
-```bash
-# Crear archivo .env en la raíz del proyecto
-cp .env.example .env
-
-# Editar .env con tus credenciales
-MSP_API_URL=https://api.mspmanager.com
-MSP_API_KEY=tu-api-key-aqui
-NODE_ENV=development
-```
-
-### 4. Ejecutar en desarrollo
-```bash
-# Ejecutar servidor y cliente simultáneamente
+# O desde la línea de comandos
 npm run dev
-
-# O ejecutar por separado:
-npm run server    # Backend en puerto 5000
-npm run client    # Frontend en puerto 3000
 ```
 
-## 🌐 Acceso
+#### Linux/Mac
+```bash
+# Hacer ejecutable y ejecutar
+chmod +x start-local.sh
+./start-local.sh
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:5000
-- **Dashboard**: http://localhost:3000
-- **Horas**: http://localhost:3000/hours
+# O desde la línea de comandos
+npm run dev
+```
 
-## 📊 Endpoints de la API
+### Configuración Manual
 
-### Dashboard
-- `GET /api/dashboard/stats` - Estadísticas generales
-- `GET /api/dashboard/weekly-activity` - Actividad semanal
-- `GET /api/dashboard/top-clients` - Top clientes
+1. **Instalar dependencias:**
+```bash
+npm run install-all
+```
 
-### Tickets
-- `GET /api/tickets/open` - Tickets abiertos
-- `GET /api/tickets/closed` - Tickets cerrados
+2. **Configurar variables de entorno:**
+```bash
+# Copiar archivo de configuración local
+cp env.local .env
+```
 
-### Horas
-- `GET /api/hours/technicians-table` - Tabla de horas por técnico
+3. **Iniciar servidores:**
+```bash
+npm run dev
+```
+
+### Puertos Utilizados
+
+- **Backend:** Puerto 5001 (http://localhost:5001)
+- **Frontend:** Puerto 3001 (http://localhost:3001)
+- **Proxy:** Configurado automáticamente
+
+### URLs de Acceso
+
+- **Dashboard:** http://localhost:3001
+- **API Backend:** http://localhost:5001/api/
+- **Test API:** http://localhost:5001/api/test-simple
 
 ## 🚀 Despliegue en Producción
 
-### 1. Build de producción
+### Ubuntu Server
+
+1. **Preparar servidor:**
 ```bash
-cd client
-npm run build
-cd ..
+sudo ./prepare-ubuntu.sh
 ```
 
-### 2. Configurar PM2
+2. **Configurar dominio:**
 ```bash
-npm install -g pm2
-pm2 start server/index.js --name "msp-backend"
-pm2 start "npm start" --cwd "./client" --name "msp-frontend"
-pm2 startup
-pm2 save
+./configurar-dominio.sh
 ```
 
-### 3. Configurar Nginx (opcional)
+3. **Desplegar:**
 ```bash
-sudo apt install nginx
-# Configurar nginx para servir el build de React
+sudo ./deploy-ubuntu.sh deploy
 ```
 
-## 🔧 Configuración
+### Opciones de Configuración
 
-### Variables de Entorno
-```bash
-NODE_ENV=production
-PORT=5000
-MSP_API_URL=https://api.mspmanager.com
-MSP_API_KEY=tu-api-key
+- **Subdominio:** `msp.tu-dominio.com`
+- **Ruta específica:** `tu-dominio.com/msp`
+- **Puerto específico:** `tu-dominio.com:5001`
+
+## 📁 Estructura del Proyecto
+
+```
+Msp-New/
+├── client/                 # Frontend React
+│   ├── src/
+│   │   ├── components/     # Componentes React
+│   │   └── App.js         # Aplicación principal
+│   └── package.json
+├── server/                 # Backend Node.js
+│   ├── index.js           # Servidor Express
+│   └── package.json
+├── deploy-ubuntu.sh        # Script de despliegue
+├── prepare-ubuntu.sh       # Preparación del servidor
+├── configurar-dominio.sh   # Configuración de dominio
+├── start-local.bat         # Inicio local Windows
+├── start-local.sh          # Inicio local Linux/Mac
+└── package.json
 ```
 
-### Puertos
-- **Backend**: 5000
-- **Frontend**: 3000
-- **Producción**: Configurable
+## 🔧 Comandos Útiles
 
-## 📱 Funcionalidades
+### Desarrollo
+```bash
+npm run dev              # Iniciar desarrollo
+npm run build            # Construir para producción
+npm run install-all      # Instalar todas las dependencias
+```
 
-### Dashboard Principal
-- Total de tickets abiertos/cerrados
-- Horas trabajadas (reales vs. facturables)
-- Clientes activos
-- Gráficos de actividad semanal
+### Producción
+```bash
+sudo ./deploy-ubuntu.sh status    # Ver estado
+sudo ./deploy-ubuntu.sh restart   # Reiniciar servicios
+sudo ./deploy-ubuntu.sh rollback  # Rollback si hay problemas
+```
 
-### Gestión de Horas
-- Tabla de técnicos con fechas
-- Horas por día por técnico
-- Colores inteligentes (verde ≥6h, amarillo <6h)
-- Totales por técnico
+## 📊 Monitoreo
 
-### Reportes
-- Análisis por cliente
-- Estadísticas de tickets
-- Actividad temporal
+### Logs
+```bash
+# Logs de la aplicación
+tail -f /var/log/msp-dashboard/combined.log
 
-## 🤝 Contribuir
+# Logs de nginx
+tail -f /var/log/nginx/msp-dashboard.access.log
 
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
+# Logs de PM2
+pm2 logs msp-dashboard
+```
 
-## 📄 Licencia
+### Estado del Sistema
+```bash
+# Ver procesos
+pm2 monit
 
-Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para detalles.
+# Ver recursos
+htop
+
+# Ver puertos en uso
+netstat -tlnp | grep -E ":(80|5001|3001)"
+```
+
+## 🚨 Solución de Problemas
+
+### Error de Proxy
+```bash
+# Verificar que el backend esté corriendo
+curl http://localhost:5001/api/test-simple
+
+# Verificar puertos en uso
+netstat -tlnp | grep :5001
+```
+
+### Error de CORS
+- Verificar configuración en `server/index.js`
+- Asegurar que `CORS_ORIGIN` esté configurado correctamente
+
+### Error de Dependencias
+```bash
+# Limpiar e instalar de nuevo
+rm -rf node_modules package-lock.json
+npm install
+```
 
 ## 📞 Soporte
 
-- **Issues**: [GitHub Issues](https://github.com/tu-usuario/msp-dashboard/issues)
-- **Email**: tu-email@ejemplo.com
+### Archivos de Configuración Importantes
+- `env.local` - Configuración local
+- `env.production` - Configuración de producción
+- `deploy-ubuntu.sh` - Script de despliegue
 
-## 🔄 Changelog
+### Comandos de Diagnóstico
+```bash
+# Verificar Node.js
+node --version
+npm --version
 
-### v1.0.0
-- Dashboard principal funcional
-- Gestión de tickets
-- Tabla de horas por técnico
-- Integración con MSP Manager API
-- Reportes de cliente
+# Verificar puertos
+netstat -tlnp | grep -E ":(3001|5001|80)"
 
----
+# Verificar servicios
+pm2 list
+systemctl status nginx
+```
 
-**Desarrollado con ❤️ para MSP Manager**
+## 🎉 ¡Listo!
+
+Tu MSP Dashboard está configurado para funcionar tanto en desarrollo local como en producción sin conflictos con otras aplicaciones.
 

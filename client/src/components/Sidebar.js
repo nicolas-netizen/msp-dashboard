@@ -6,6 +6,7 @@ import {
   Clock, 
   FileText, 
   BarChart3,
+
   Settings 
 } from 'lucide-react';
 
@@ -14,17 +15,23 @@ const Sidebar = () => {
 
   const menuItems = [
     { path: '/', icon: Home, label: 'Dashboard', color: 'text-blue-600' },
-    { path: '/tickets/open', icon: Ticket, label: 'Tickets Abiertos', color: 'text-green-600' },
     { path: '/tickets/closed', icon: Ticket, label: 'Tickets Cerrados', color: 'text-red-600' },
     { path: '/hours', icon: Clock, label: 'Resumen Horas', color: 'text-purple-600' },
+    { path: '/overtime', icon: BarChart3, label: 'Horas Extras', color: 'text-indigo-600' },
     { path: '/reports', icon: FileText, label: 'Reportes Cliente', color: 'text-orange-600' },
+
   ];
 
   return (
     <div className="w-64 bg-white shadow-lg">
       <div className="p-6">
-        <h1 className="text-2xl font-bold text-gray-800">MSP Dashboard</h1>
-        <p className="text-sm text-gray-600 mt-2">Gestión de tickets y horas</p>
+        <div className="flex items-center justify-center mb-4">
+          <img 
+            src="/CS_Logo_Full_color.png" 
+            alt="MSP Dashboard Logo" 
+            className="h-12 w-auto"
+          />
+        </div>
       </div>
       
       <nav className="mt-6">

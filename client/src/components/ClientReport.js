@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Download, Calendar, Building, Clock, Search, Filter } from 'lucide-react';
+import { FileText, Download, Calendar, Building, Clock } from 'lucide-react';
 import axios from 'axios';
 import moment from 'moment';
 
@@ -9,8 +9,9 @@ const ClientReport = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [reportData, setReportData] = useState(null);
-  const [loading, setLoading] = useState(false);
+
   const [generating, setGenerating] = useState(false);
+  const [clientsLoading, setClientsLoading] = useState(true);
 
   useEffect(() => {
     setDefaultDates();
@@ -27,20 +28,24 @@ const ClientReport = () => {
 
   const fetchClients = async () => {
     try {
-      // This would typically come from a clients endpoint
-      // For now, using sample data
-      const sampleClients = [
-        { id: 1, name: 'Empresa ABC S.A.', email: 'contacto@abc.com' },
-        { id: 2, name: 'Corporación XYZ', email: 'info@xyz.com' },
-        { id: 3, name: 'Startup Innovadora', email: 'hello@startup.com' },
-        { id: 4, name: 'Consultora Delta', email: 'admin@delta.com' },
-        { id: 5, name: 'Tech Solutions Ltd', email: 'support@techsolutions.com' }
-      ];
-      setClients(sampleClients);
+      setClientsLoading(true);
+      const response = await axios.get('/api/clients');
+      if (response.data.success) {
+        setClients(response.data.clients);
+        console.log('Clientes cargados desde API:', response.data.clients.length);
+      } else {
+        console.error('Error fetching clients:', response.data.error);
+        setClients([]);
+      }
     } catch (error) {
       console.error('Error fetching clients:', error);
+      setClients([]);
+    } finally {
+      setClientsLoading(false);
     }
   };
+
+
 
   const generateReport = async () => {
     if (!selectedClient || !startDate || !endDate) {
@@ -104,7 +109,7 @@ const ClientReport = () => {
   };
 
   const getSelectedClientName = () => {
-    const client = clients.find(c => c.id.toString() === selectedClient);
+    const client = clients.find(c => c.id === selectedClient);
     return client ? client.name : '';
   };
 
@@ -117,6 +122,46 @@ const ClientReport = () => {
           Genera y exporta reportes detallados de horas trabajadas por cliente
         </p>
       </div>
+
+      {/* Client Statistics */}
+      {clients.length > 0 && (
+        <div className="dashboard-card mb-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Estadísticas de Clientes</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <div className="flex items-center">
+                <Building className="w-6 h-6 text-blue-600 mr-2" />
+                <div>
+                  <p className="text-sm text-blue-600 font-medium">Total Clientes</p>
+                  <p className="text-2xl font-bold text-blue-900">{clients.length}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-green-50 p-4 rounded-lg">
+              <div className="flex items-center">
+                <Calendar className="w-6 h-6 text-green-600 mr-2" />
+                <div>
+                  <p className="text-sm text-green-600 font-medium">Período Seleccionado</p>
+                  <p className="text-lg font-bold text-green-900">
+                    {startDate && endDate ? `${moment(startDate).format('DD/MM')} - ${moment(endDate).format('DD/MM')}` : 'No definido'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <div className="flex items-center">
+                <Clock className="w-6 h-6 text-purple-600 mr-2" />
+                <div>
+                  <p className="text-sm text-purple-600 font-medium">Última Actualización</p>
+                  <p className="text-lg font-bold text-purple-900">
+                    {moment().format('HH:mm')}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Report Configuration */}
       <div className="dashboard-card mb-6">
@@ -132,14 +177,21 @@ const ClientReport = () => {
             <select
               value={selectedClient}
               onChange={(e) => setSelectedClient(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={clientsLoading}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <option value="">Seleccionar Cliente</option>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                </option>
-              ))}
+              <option value="">
+                {clientsLoading ? 'Cargando clientes...' : 'Seleccionar Cliente'}
+              </option>
+              {clients.length === 0 && !clientsLoading ? (
+                <option value="" disabled>No hay clientes disponibles</option>
+              ) : (
+                clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -191,6 +243,59 @@ const ClientReport = () => {
             <Download className="w-4 h-4 mr-2" />
             Exportar CSV
           </button>
+
+          <button
+            onClick={async () => {
+              try {
+                console.log('🔍 Probando endpoint de debug...');
+                const response = await axios.get('/api/clients/debug');
+                console.log('Debug response:', response.data);
+                alert('Debug completado. Revisa la consola para más detalles.');
+              } catch (error) {
+                console.error('Error en debug:', error);
+                alert('Error en debug: ' + error.message);
+              }
+            }}
+            className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          >
+            🐛 Debug API
+          </button>
+
+          <button
+            onClick={async () => {
+              try {
+                console.log('🔍 Probando conexión MSP...');
+                const response = await axios.get('/api/test-msp-connection');
+                console.log('Test MSP connection response:', response.data);
+                alert('Test de conexión completado. Revisa la consola para más detalles.');
+              } catch (error) {
+                console.error('Error en test de conexión:', error);
+                alert('Error en test de conexión: ' + error.message);
+              }
+            }}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          >
+            🌐 Test Conexión
+          </button>
+
+          <button
+            onClick={async () => {
+              try {
+                console.log('🔍 Explorando campos disponibles...');
+                const response = await axios.get('/api/explore-fields');
+                console.log('Explore fields response:', response.data);
+                alert('Exploración de campos completada. Revisa la consola para ver qué campos están disponibles.');
+              } catch (error) {
+                console.error('Error explorando campos:', error);
+                alert('Error explorando campos: ' + error.message);
+              }
+            }}
+            className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          >
+            🔍 Explorar Campos
+          </button>
+
+
         </div>
       </div>
 
@@ -305,10 +410,28 @@ const ClientReport = () => {
       {/* Quick Actions */}
       <div className="dashboard-card">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Acciones Rápidas</h3>
+        
+        {clients.length === 0 && !clientsLoading ? (
+          <div className="text-center py-8">
+            <Building className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No hay clientes disponibles</h3>
+            <p className="text-gray-500 mb-4">
+              Los clientes se cargan automáticamente desde la API de MSP Manager.
+            </p>
+            <button
+              onClick={fetchClients}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+            >
+              Reintentar
+            </button>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button 
             onClick={() => {
-              setSelectedClient('1');
+              if (clients.length > 0) {
+                setSelectedClient(clients[0].id);
+              }
               setStartDate(moment().startOf('month').format('YYYY-MM-DD'));
               setEndDate(moment().endOf('month').format('YYYY-MM-DD'));
             }}
@@ -340,6 +463,7 @@ const ClientReport = () => {
             Reporte Trimestral
           </button>
         </div>
+        )}
       </div>
     </div>
   );
