@@ -338,23 +338,19 @@ app.get('/api/test-tickettimeentriesview', async (req, res) => {
 
       console.log(`📊 Filtered ${filteredEntries.length} entries for the period`);
 
-    // Generate date range array (excluding weekends)
+    // Generate date range array (including all days)
     const dates = [];
     const current = moment(startDate);
     const end = moment(endDate);
     
     while (current.isSameOrBefore(end)) {
-      // Only include weekdays (Monday = 1, Tuesday = 2, ..., Friday = 5)
-      // Sunday = 0, Saturday = 6
-      const dayOfWeek = current.day();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        dates.push(current.clone());
-      }
+      // Include all days (including weekends)
+      dates.push(current.clone());
       current.add(1, 'day');
     }
     
     console.log(`📅 Date range: ${startDate} to ${endDate}`);
-    console.log(`📅 Weekdays only: ${dates.length} days (excluded weekends)`);
+    console.log(`📅 All days: ${dates.length} days (including weekends)`);
 
           // Group hours by actual technician and date
       const hoursByTechnician = {};
@@ -1185,11 +1181,7 @@ app.get('/api/dashboard/weekly-activity', async (req, res) => {
         const targetDate = moment().subtract(6 - i, 'days');
         const dayOfWeek = targetDate.day();
         
-        // Skip weekends (Sunday = 0, Saturday = 6)
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
-          continue;
-        }
-        
+        // Include all days (including weekends)
         const dayName = daysOfWeek[dayOfWeek];
         const dateStr = targetDate.format('YYYY-MM-DD');
         
@@ -1442,13 +1434,13 @@ app.get('/api/dashboard/stats', async (req, res) => {
             
             // Also exclude weekends
             const dayOfWeek = entryDate.day();
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // Sunday = 0, Saturday = 6
+            // Include all days (including weekends)
             
-            if (isInRange && !isWeekend) {
+            if (isInRange) {
               console.log(`✅ Entry ${entry.TicketNumber} (${entry.CustomerName}): ${entry.TimeRoundedHrs}h on ${entryDate.format('YYYY-MM-DD')} (${entryDate.format('dddd')})`);
             }
             
-            return isInRange && !isWeekend;
+            return isInRange;
           } catch (error) {
             console.error('Error filtering time entry date:', error.message);
             return false;
@@ -1755,7 +1747,7 @@ app.get('/api/overtime/hours', async (req, res) => {
 
     console.log(`📊 Found ${timeEntries.value.length} total time entries`);
 
-    // Filter entries by date range and exclude weekends
+    // Filter entries by date range (including weekends)
     let debugCount = 0;
     const filteredEntries = timeEntries.value.filter(entry => {
       try {

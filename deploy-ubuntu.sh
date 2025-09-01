@@ -486,7 +486,7 @@ status() {
     
     echo ""
     echo "Puertos en uso:"
-    netstat -tlnp | grep -E ":(80|$PORT)" || echo "No encontrados"
+    ss -tlnp | grep -E ":(80|$PORT)" || echo "No encontrados"
     
     echo ""
     echo "Logs recientes:"
