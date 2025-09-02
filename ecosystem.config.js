@@ -9,12 +9,12 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'development',
-        PORT: 5000
+        PORT: 5004
       },
-      env_production: {
-        NODE_ENV: 'production',
-        PORT: 5000
-      }
+      error_file: './logs/backend-err.log',
+      out_file: './logs/backend-out.log',
+      log_file: './logs/backend-combined.log',
+      time: true
     },
     {
       name: 'msp-frontend',
@@ -27,12 +27,12 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'development',
-        PORT: 3000
+        PORT: 3004
       },
-      env_production: {
-        NODE_ENV: 'production',
-        PORT: 3000
-      }
+      error_file: './logs/frontend-err.log',
+      out_file: './logs/frontend-out.log',
+      log_file: './logs/frontend-combined.log',
+      time: true
     }
   ]
 };
