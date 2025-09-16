@@ -17,8 +17,8 @@ const OvertimeHours = () => {
     const now = moment();
     const currentDay = now.date();
     
-    if (currentDay >= 16) {
-      // Si estamos en la segunda mitad del mes (día 16 o posterior)
+    if (currentDay > 16) {
+      // Si estamos después del día 16 del mes
       // Período: día 16 del mes actual al día 15 del mes siguiente
       const startDate = now.clone().date(16);
       const endDate = now.clone().add(1, 'month').date(15);
@@ -29,7 +29,7 @@ const OvertimeHours = () => {
         label: `${startDate.format('DD/MM/YYYY')} - ${endDate.format('DD/MM/YYYY')}`
       };
     } else {
-      // Si estamos en la primera mitad del mes (día 1-15)
+      // Si estamos en el día 16 o antes del día 16
       // Período: día 16 del mes anterior al día 15 del mes actual
       const startDate = now.clone().subtract(1, 'month').date(16);
       const endDate = now.clone().date(15);
