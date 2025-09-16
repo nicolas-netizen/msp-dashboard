@@ -12,29 +12,34 @@ const OvertimeHours = () => {
   const [dateRange, setDateRange] = useState({});
   const [nextUpdate, setNextUpdate] = useState(null);
 
-  // Calculate date range: 15th of previous month to 16th of current month
+  // Calculate date range: 16th of previous month to 15th of current month
   const calculateDateRange = () => {
     const now = moment();
-    const currentMonth = now.month();
-    const currentYear = now.year();
+    const currentDay = now.date();
     
-    // 16th of current month
-    const endDate = moment([currentYear, currentMonth, 16]);
-    
-    // 15th of previous month
-    const startDate = moment([currentYear, currentMonth - 1, 15]);
-    
-    // If we're before the 16th of current month, adjust to previous period
-    if (now.date() < 16) {
-      endDate.subtract(1, 'month');
-      startDate.subtract(1, 'month');
+    if (currentDay >= 16) {
+      // Si estamos en la segunda mitad del mes (día 16 o posterior)
+      // Período: día 16 del mes actual al día 15 del mes siguiente
+      const startDate = now.clone().date(16);
+      const endDate = now.clone().add(1, 'month').date(15);
+      
+      return {
+        startDate: startDate.format('YYYY-MM-DD'),
+        endDate: endDate.format('YYYY-MM-DD'),
+        label: `${startDate.format('DD/MM/YYYY')} - ${endDate.format('DD/MM/YYYY')}`
+      };
+    } else {
+      // Si estamos en la primera mitad del mes (día 1-15)
+      // Período: día 16 del mes anterior al día 15 del mes actual
+      const startDate = now.clone().subtract(1, 'month').date(16);
+      const endDate = now.clone().date(15);
+      
+      return {
+        startDate: startDate.format('YYYY-MM-DD'),
+        endDate: endDate.format('YYYY-MM-DD'),
+        label: `${startDate.format('DD/MM/YYYY')} - ${endDate.format('DD/MM/YYYY')}`
+      };
     }
-    
-    return {
-      startDate: startDate.format('YYYY-MM-DD'),
-      endDate: endDate.format('YYYY-MM-DD'),
-      label: `${startDate.format('DD/MM/YYYY')} - ${endDate.format('DD/MM/YYYY')}`
-    };
   };
 
   useEffect(() => {
@@ -315,7 +320,7 @@ const OvertimeHours = () => {
               <p>• <strong>Rate 1.5:</strong> Se cuenta como <strong>50%</strong> (horas extras)</p>
               <p>• <strong>Rate 2.0:</strong> Se cuenta como <strong>100%</strong> (horas extras)</p>
               <p>• <strong>Rate 1.0:</strong> No se incluye (horas normales)</p>
-              <p>• <strong>Período:</strong> Del 15 del mes anterior al 16 del mes actual</p>
+              <p>• <strong>Período:</strong> Del 16 del mes anterior al 15 del mes actual</p>
             </div>
           </div>
         </div>
