@@ -420,15 +420,32 @@ const getAutomaticDateRange = (period) => {
       label: 'Últimos 7 Días'
     };
   } else if (period === 'month') {
-    // Últimos 30 días
-    const startDate = today.clone().subtract(30, 'days').format('YYYY-MM-DD');
-    const endDate = today.format('YYYY-MM-DD');
+    // Nuevo período: del día 16 del mes anterior al día 15 del mes actual
+    const currentDay = today.date();
     
-    return {
-      startDate,
-      endDate,
-      label: 'Último Mes'
-    };
+    if (currentDay >= 16) {
+      // Si estamos en la segunda mitad del mes (día 16 o posterior)
+      // Período: día 16 del mes actual al día 15 del mes siguiente
+      const startDate = today.clone().date(16).format('YYYY-MM-DD');
+      const endDate = today.clone().add(1, 'month').date(15).format('YYYY-MM-DD');
+      
+      return {
+        startDate,
+        endDate,
+        label: `Período: ${startDate} - ${endDate}`
+      };
+    } else {
+      // Si estamos en la primera mitad del mes (día 1-15)
+      // Período: día 16 del mes anterior al día 15 del mes actual
+      const startDate = today.clone().subtract(1, 'month').date(16).format('YYYY-MM-DD');
+      const endDate = today.clone().date(15).format('YYYY-MM-DD');
+      
+      return {
+        startDate,
+        endDate,
+        label: `Período: ${startDate} - ${endDate}`
+      };
+    }
   }
   
   // Default: últimos 7 días
@@ -2279,6 +2296,143 @@ app.get('/api/clients/debug', async (req, res) => {
       success: false, 
       error: 'Error en debug: ' + error.message,
       stack: error.stack
+    });
+  }
+});
+
+// Endpoint para notificaciones
+app.get('/api/notifications', async (req, res) => {
+  try {
+    console.log('🔔 Fetching notifications...');
+    
+    // Obtener tickets críticos (sin asignar por más de 24 horas)
+    const criticalTickets = await makeMSPRequest('/TicketsView', {
+      $filter: "TicketStatusName eq 'New' or TicketStatusName eq 'Open'",
+      $select: 'TicketId,TicketNumber,TicketTitle,CreatedDate,CustomerName',
+      $orderby: 'CreatedDate desc',
+      $top: 10
+    });
+    
+    // Obtener tickets con alta prioridad
+    const highPriorityTickets = await makeMSPRequest('/TicketsView', {
+      $filter: "TicketPriorityName eq 'High' or TicketPriorityName eq 'Critical'",
+      $select: 'TicketId,TicketNumber,TicketTitle,CreatedDate,CustomerName,TicketPriorityName',
+      $orderby: 'CreatedDate desc',
+      $top: 5
+    });
+    
+    // Obtener horas extras del día actual
+    const today = moment().format('YYYY-MM-DD');
+    const todayEntries = await makeMSPRequest('/tickettimeentriesview', {
+      $filter: `StartTime ge ${today} and StartTime le ${today}`,
+      $select: 'TimeRoundedHrs,StartTime,UserFirstName,UserLastName',
+      $top: 100
+    });
+    
+    const notifications = [];
+    
+    // Notificación para tickets críticos
+    if (criticalTickets.value && criticalTickets.value.length > 0) {
+      const oldTickets = criticalTickets.value.filter(ticket => {
+        const createdDate = moment(ticket.CreatedDate);
+        const hoursSinceCreation = moment().diff(createdDate, 'hours');
+        return hoursSinceCreation > 24;
+      });
+      
+      if (oldTickets.length > 0) {
+        notifications.push({
+          id: 'critical-tickets',
+          type: 'warning',
+          title: `${oldTickets.length} tickets críticos sin asignar`,
+          message: `${oldTickets.length} tickets llevan más de 24 horas sin asignar`,
+          read: false,
+          createdAt: new Date().toISOString()
+        });
+      }
+    }
+    
+    // Notificación para tickets de alta prioridad
+    if (highPriorityTickets.value && highPriorityTickets.value.length > 0) {
+      notifications.push({
+        id: 'high-priority-tickets',
+        type: 'warning',
+        title: `${highPriorityTickets.value.length} tickets de alta prioridad`,
+        message: `Hay ${highPriorityTickets.value.length} tickets con prioridad alta o crítica`,
+        read: false,
+        createdAt: new Date().toISOString()
+      });
+    }
+    
+    // Notificación para horas extras excesivas
+    if (todayEntries.value && todayEntries.value.length > 0) {
+      const totalHoursToday = todayEntries.value.reduce((sum, entry) => 
+        sum + (parseFloat(entry.TimeRoundedHrs) || 0), 0
+      );
+      
+      if (totalHoursToday > 12) {
+        notifications.push({
+          id: 'overtime-warning',
+          type: 'info',
+          title: 'Horas extras excesivas',
+          message: `Se registraron ${totalHoursToday.toFixed(1)}h hoy - Posible sobrecarga`,
+          read: false,
+          createdAt: new Date().toISOString()
+        });
+      }
+    }
+    
+    // Notificación de éxito si no hay problemas
+    if (notifications.length === 0) {
+      notifications.push({
+        id: 'all-good',
+        type: 'success',
+        title: 'Todo funcionando correctamente',
+        message: 'No hay alertas críticas en este momento',
+        read: false,
+        createdAt: new Date().toISOString()
+      });
+    }
+    
+    const unreadCount = notifications.filter(n => !n.read).length;
+    
+    console.log(`✅ Generated ${notifications.length} notifications (${unreadCount} unread)`);
+    
+    res.json({
+      success: true,
+      notifications: notifications,
+      unreadCount: unreadCount
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching notifications:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching notifications',
+      error: error.message
+    });
+  }
+});
+
+// Endpoint para marcar notificación como leída
+app.put('/api/notifications/:id/read', (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`📖 Marking notification ${id} as read`);
+    
+    // En una implementación real, aquí guardarías en base de datos
+    // Por ahora solo confirmamos que se procesó
+    
+    res.json({
+      success: true,
+      message: `Notification ${id} marked as read`
+    });
+    
+  } catch (error) {
+    console.error('❌ Error marking notification as read:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Error marking notification as read',
+      error: error.message
     });
   }
 });
