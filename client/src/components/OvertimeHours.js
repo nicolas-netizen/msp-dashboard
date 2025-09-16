@@ -43,8 +43,14 @@ const OvertimeHours = () => {
   };
 
   useEffect(() => {
-    // Cargar datos usando el período automático del backend
-    fetchOvertimeHours();
+    const updateDateRange = () => {
+      const range = calculateDateRange();
+      setDateRange(range);
+      fetchOvertimeHours(range.startDate, range.endDate);
+    };
+
+    // Actualizar inmediatamente
+    updateDateRange();
 
     // Configurar actualización automática cada día a las 00:00
     const now = new Date();
@@ -59,10 +65,10 @@ const OvertimeHours = () => {
     
     // Timer para medianoche
     const midnightTimer = setTimeout(() => {
-      fetchOvertimeHours();
+      updateDateRange();
       
       // Configurar actualización diaria
-      const dailyTimer = setInterval(fetchOvertimeHours, 24 * 60 * 60 * 1000);
+      const dailyTimer = setInterval(updateDateRange, 24 * 60 * 60 * 1000);
       
       // Cleanup del timer diario
       return () => clearInterval(dailyTimer);
@@ -72,24 +78,17 @@ const OvertimeHours = () => {
     return () => clearTimeout(midnightTimer);
   }, []);
 
-  const fetchOvertimeHours = async () => {
+  const fetchOvertimeHours = async (startDate, endDate) => {
     try {
       setLoading(true);
       setError(null);
       
-      // Usar el sistema automático del backend - no enviar fechas
-      const response = await axios.get('/api/overtime/hours');
+      const response = await axios.get('/api/overtime/hours', {
+        params: { startDate, endDate }
+      });
       
       if (response.data.success) {
         setOvertimeData(response.data.overtimeData);
-        // Actualizar el período con el que viene del backend
-        if (response.data.period) {
-          setDateRange({
-            startDate: response.data.period.startDate,
-            endDate: response.data.period.endDate,
-            label: `${moment(response.data.period.startDate).format('DD/MM/YYYY')} - ${moment(response.data.period.endDate).format('DD/MM/YYYY')}`
-          });
-        }
       } else {
         setError('Error al cargar las horas extras');
       }
@@ -102,7 +101,8 @@ const OvertimeHours = () => {
   };
 
   const refreshData = () => {
-    fetchOvertimeHours();
+    const range = calculateDateRange();
+    fetchOvertimeHours(range.startDate, range.endDate);
   };
 
   // Calculate totals
