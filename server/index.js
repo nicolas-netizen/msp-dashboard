@@ -1736,16 +1736,17 @@ app.get('/api/debug-fields', async (req, res) => {
 // Overtime hours endpoint
 app.get('/api/overtime/hours', async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
+    let { startDate, endDate } = req.query;
     
+    // Si no se proporcionan fechas, usar el período automático
     if (!startDate || !endDate) {
-      return res.status(400).json({
-        success: false,
-        message: 'startDate and endDate are required'
-      });
+      const automaticPeriod = getAutomaticDateRange('month');
+      startDate = automaticPeriod.startDate;
+      endDate = automaticPeriod.endDate;
+      console.log('🔍 Using automatic period for overtime hours:', { startDate, endDate });
+    } else {
+      console.log('🔍 Using provided period for overtime hours:', { startDate, endDate });
     }
-
-    console.log('🔍 Fetching overtime hours...', { startDate, endDate });
 
     // Get time entries with rate information - using the correct 'rate' field
     const timeEntries = await makeMSPRequest('/tickettimeentriesview', {
