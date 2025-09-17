@@ -11,6 +11,10 @@ module.exports = {
         NODE_ENV: 'development',
         PORT: 5004
       },
+      env_production: {
+        NODE_ENV: 'production',
+        PORT: 5004
+      },
       error_file: './logs/backend-err.log',
       out_file: './logs/backend-out.log',
       log_file: './logs/backend-combined.log',
@@ -27,6 +31,10 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'development',
+        PORT: 3004
+      },
+      env_production: {
+        NODE_ENV: 'production',
         PORT: 3004
       },
       error_file: './logs/frontend-err.log',
