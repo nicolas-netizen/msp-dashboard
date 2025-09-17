@@ -2119,7 +2119,7 @@ app.get('/api/overtime/detail', async (req, res) => {
 
     // Get time entries with rate information
     const timeEntries = await makeMSPRequest('/tickettimeentriesview', {
-      $select: 'TimeRoundedHrs,StartTime,TicketId,TicketNumber,CustomerName,UserFirstName,UserLastName,UserId,Rate,RateName,Description,CompletedDate',
+      $select: 'TimeRoundedHrs,StartTime,TicketId,TicketNumber,CustomerName,UserFirstName,UserLastName,UserId,Rate,RateName,Description',
       $top: 10000,
       $orderby: 'StartTime desc'
     });
@@ -2186,7 +2186,7 @@ app.get('/api/overtime/detail', async (req, res) => {
             customerName: entry.CustomerName || 'Sin Cliente',
             userName: userName,
             description: entry.Description || 'Sin descripción',
-            completedDate: entry.CompletedDate || entry.StartTime,
+            completedDate: entry.StartTime,
             rate: rate,
             rateName: rateName,
             hours: hours,
