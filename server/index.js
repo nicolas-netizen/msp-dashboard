@@ -2157,8 +2157,15 @@ app.get('/api/overtime/detail', async (req, res) => {
 
     console.log(`📊 Filtered ${filteredEntries.length} entries for detail calculation`);
 
+    // Debug: Show unique RateName values to understand the data
+    const uniqueRateNames = [...new Set(filteredEntries.map(entry => entry.RateName))];
+    const uniqueRates = [...new Set(filteredEntries.map(entry => entry.Rate))];
+    console.log(`🔍 Unique RateNames found:`, uniqueRateNames);
+    console.log(`🔍 Unique Rates found:`, uniqueRates);
+
     // Process entries to get detailed data
     const detailData = [];
+    let debugCount = 0;
     
     filteredEntries.forEach(entry => {
       const firstName = entry.UserFirstName || '';
@@ -2175,7 +2182,22 @@ app.get('/api/overtime/detail', async (req, res) => {
       
       // Only include overtime entries (rate 1.5 or 2.0, or rate name indicates overtime)
       const isOvertime = rate === 1.5 || rate === 2.0 || 
-                        (rateName && (rateName.toLowerCase().includes('overtime') || rateName.toLowerCase().includes('extra')));
+                        (rateName && (
+                          rateName.toLowerCase().includes('overtime') || 
+                          rateName.toLowerCase().includes('extra') ||
+                          rateName.toLowerCase().includes('nocturno') ||
+                          rateName.toLowerCase().includes('finde') ||
+                          rateName.toLowerCase().includes('feriado') ||
+                          rateName.toLowerCase().includes('50') ||
+                          rateName.toLowerCase().includes('100') ||
+                          rateName.toLowerCase().includes('double')
+                        ));
+      
+      // Debug logging for first few entries
+      if (debugCount < 5) {
+        console.log(`🔍 Detail processing: ${userName} - Rate: ${rate}, RateName: "${rateName}", IsOvertime: ${isOvertime}`);
+        debugCount++;
+      }
       
       if (isOvertime) {
         const hours = parseFloat(entry.TimeRoundedHrs) || 0;
