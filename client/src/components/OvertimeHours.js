@@ -11,46 +11,68 @@ const OvertimeHours = () => {
   const [error, setError] = useState(null);
   const [dateRange, setDateRange] = useState({});
   const [nextUpdate, setNextUpdate] = useState(null);
+  const [currentPeriod, setCurrentPeriod] = useState(0); // 0 = actual, -1 = anterior, etc.
+  const [availablePeriods, setAvailablePeriods] = useState([]);
+  const [viewMode, setViewMode] = useState('summary'); // 'summary' or 'detail'
+  const [detailData, setDetailData] = useState([]);
 
-  // Calculate date range: 16th of previous month to 15th of current month
-  const calculateDateRange = () => {
+  // Calculate date range for a specific period offset
+  const calculateDateRange = (periodOffset = 0) => {
     const now = moment();
     const currentDay = now.date();
     
+    // Calculate the base month for the period
+    let baseMonth = now.clone();
     if (currentDay > 16) {
-      // Si estamos después del día 16 del mes
-      // Período: día 16 del mes actual al día 15 del mes siguiente
-      const startDate = now.clone().date(16);
-      const endDate = now.clone().add(1, 'month').date(15);
-      
-      return {
-        startDate: startDate.format('YYYY-MM-DD'),
-        endDate: endDate.format('YYYY-MM-DD'),
-        label: `${startDate.format('DD/MM/YYYY')} - ${endDate.format('DD/MM/YYYY')}`
-      };
+      // Si estamos después del día 16, el período actual es del mes actual
+      baseMonth = now.clone();
     } else {
-      // Si estamos en el día 16 o antes del día 16
-      // Período: día 16 del mes anterior al día 15 del mes actual
-      const startDate = now.clone().subtract(1, 'month').date(16);
-      const endDate = now.clone().date(15);
-      
-      return {
-        startDate: startDate.format('YYYY-MM-DD'),
-        endDate: endDate.format('YYYY-MM-DD'),
-        label: `${startDate.format('DD/MM/YYYY')} - ${endDate.format('DD/MM/YYYY')}`
-      };
+      // Si estamos en el día 16 o antes, el período actual es del mes anterior
+      baseMonth = now.clone().subtract(1, 'month');
     }
+    
+    // Apply the period offset
+    const targetMonth = baseMonth.clone().add(periodOffset, 'month');
+    
+    // Calculate the period: 16th of target month to 15th of next month
+    const startDate = targetMonth.clone().date(16);
+    const endDate = targetMonth.clone().add(1, 'month').date(15);
+    
+    return {
+      startDate: startDate.format('YYYY-MM-DD'),
+      endDate: endDate.format('YYYY-MM-DD'),
+      label: `${startDate.format('DD/MM/YYYY')} - ${endDate.format('DD/MM/YYYY')}`,
+      monthLabel: startDate.format('MMMM YYYY'),
+      periodOffset: periodOffset
+    };
+  };
+
+  // Generate available periods (current + 6 months back)
+  const generateAvailablePeriods = () => {
+    const periods = [];
+    for (let i = 0; i >= -6; i--) {
+      const period = calculateDateRange(i);
+      periods.push({
+        ...period,
+        isCurrent: i === 0
+      });
+    }
+    return periods;
   };
 
   useEffect(() => {
-    const updateDateRange = () => {
-      const range = calculateDateRange();
+    // Initialize available periods
+    const periods = generateAvailablePeriods();
+    setAvailablePeriods(periods);
+    
+    const updateDateRange = (periodOffset = 0) => {
+      const range = calculateDateRange(periodOffset);
       setDateRange(range);
       fetchOvertimeHours(range.startDate, range.endDate);
     };
 
-    // Actualizar inmediatamente
-    updateDateRange();
+    // Actualizar inmediatamente con el período actual
+    updateDateRange(currentPeriod);
 
     // Configurar actualización automática cada día a las 00:00
     const now = new Date();
@@ -100,9 +122,73 @@ const OvertimeHours = () => {
     }
   };
 
+  const fetchDetailData = async (startDate, endDate) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await axios.get('/api/overtime/detail', {
+        params: { startDate, endDate }
+      });
+      
+      if (response.data.success) {
+        setDetailData(response.data.detailData);
+      } else {
+        setError('Error al cargar los detalles');
+      }
+    } catch (error) {
+      console.error('Error fetching detail data:', error);
+      setError('Error de conexión al servidor');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const refreshData = () => {
-    const range = calculateDateRange();
-    fetchOvertimeHours(range.startDate, range.endDate);
+    const range = calculateDateRange(currentPeriod);
+    if (viewMode === 'summary') {
+      fetchOvertimeHours(range.startDate, range.endDate);
+    } else {
+      fetchDetailData(range.startDate, range.endDate);
+    }
+  };
+
+  const changePeriod = (newPeriodOffset) => {
+    setCurrentPeriod(newPeriodOffset);
+    const range = calculateDateRange(newPeriodOffset);
+    setDateRange(range);
+    if (viewMode === 'summary') {
+      fetchOvertimeHours(range.startDate, range.endDate);
+    } else {
+      fetchDetailData(range.startDate, range.endDate);
+    }
+  };
+
+  const toggleViewMode = () => {
+    const newMode = viewMode === 'summary' ? 'detail' : 'summary';
+    setViewMode(newMode);
+    const range = calculateDateRange(currentPeriod);
+    if (newMode === 'summary') {
+      fetchOvertimeHours(range.startDate, range.endDate);
+    } else {
+      fetchDetailData(range.startDate, range.endDate);
+    }
+  };
+
+  const goToPreviousPeriod = () => {
+    if (currentPeriod > -6) {
+      changePeriod(currentPeriod - 1);
+    }
+  };
+
+  const goToNextPeriod = () => {
+    if (currentPeriod < 0) {
+      changePeriod(currentPeriod + 1);
+    }
+  };
+
+  const goToCurrentPeriod = () => {
+    changePeriod(0);
   };
 
   // Calculate totals
@@ -128,6 +214,145 @@ const OvertimeHours = () => {
   };
 
   const totals = calculateTotals();
+
+  // Render detailed view
+  const renderDetailView = () => {
+    if (detailData.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <div className="text-gray-400 text-6xl mb-4">📋</div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No hay datos detallados</h3>
+          <p className="text-gray-500">No se encontraron tickets con horas extras para este período.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {/* Summary for detail view */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-blue-100">Total Tickets</p>
+                <p className="text-2xl font-bold">{detailData.length}</p>
+              </div>
+              <div className="text-blue-200 text-3xl">🎫</div>
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-green-100">Horas 50%</p>
+                <p className="text-2xl font-bold">
+                  {detailData
+                    .filter(entry => entry.rate === 1.5)
+                    .reduce((sum, entry) => sum + (parseFloat(entry.hours) || 0), 0)
+                    .toFixed(1)}h
+                </p>
+              </div>
+              <div className="text-green-200 text-3xl">50%</div>
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-4 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-purple-100">Horas 100%</p>
+                <p className="text-2xl font-bold">
+                  {detailData
+                    .filter(entry => entry.rate === 2.0)
+                    .reduce((sum, entry) => sum + (parseFloat(entry.hours) || 0), 0)
+                    .toFixed(1)}h
+                </p>
+              </div>
+              <div className="text-purple-200 text-3xl">100%</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Detailed table */}
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div className="px-6 py-4 bg-gray-50 border-b">
+            <h3 className="text-lg font-semibold text-gray-800">Detalle de Tickets - Horas Extras</h3>
+            <p className="text-sm text-gray-600">Período: {dateRange.label}</p>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Ticket #
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Cliente
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Usuario
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Descripción
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Fecha
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Rate
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Horas
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Total
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {detailData.map((entry, index) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      #{entry.ticketNumber}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {entry.customerName}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {entry.userName}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
+                      {entry.description || 'Sin descripción'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {moment(entry.completedDate).format('DD/MM/YYYY HH:mm')}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        entry.rate === 1.5 
+                          ? 'bg-blue-100 text-blue-800' 
+                          : entry.rate === 2.0
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        ${entry.rate.toFixed(2)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {parseFloat(entry.hours).toFixed(2)}h
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      ${(entry.rate * parseFloat(entry.hours)).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -167,7 +392,7 @@ const OvertimeHours = () => {
             <p className="text-gray-600 mt-2">
               Período: {dateRange.label}
             </p>
-            {nextUpdate && (
+            {nextUpdate && currentPeriod === 0 && (
               <p className="text-sm text-blue-600 mt-1">
                 🔄 Próxima actualización: {nextUpdate.toLocaleDateString('es-ES', { 
                   weekday: 'long', 
@@ -181,6 +406,19 @@ const OvertimeHours = () => {
             )}
           </div>
           <div className="flex gap-3">
+            <button
+              onClick={toggleViewMode}
+              className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                viewMode === 'summary' 
+                  ? 'bg-purple-500 hover:bg-purple-600 text-white' 
+                  : 'bg-gray-500 hover:bg-gray-600 text-white'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2" />
+              </svg>
+              {viewMode === 'summary' ? 'Vista Detallada' : 'Vista Resumen'}
+            </button>
             <button
               onClick={refreshData}
               className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
@@ -202,107 +440,196 @@ const OvertimeHours = () => {
           </div>
         </div>
         
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-blue-100">Horas 50%</p>
-                <p className="text-2xl font-bold">{totals.total50}h</p>
-              </div>
-              <div className="text-blue-200 text-3xl">50%</div>
+        {/* Period Navigation */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-700">Seleccionar Período</h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={goToPreviousPeriod}
+                disabled={currentPeriod <= -6}
+                className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:text-gray-400 rounded-lg flex items-center gap-1"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Anterior
+              </button>
+              
+              <select
+                value={currentPeriod}
+                onChange={(e) => changePeriod(parseInt(e.target.value))}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {availablePeriods.map((period) => (
+                  <option key={period.periodOffset} value={period.periodOffset}>
+                    {period.monthLabel} {period.isCurrent ? '(Actual)' : ''}
+                  </option>
+                ))}
+              </select>
+              
+              <button
+                onClick={goToNextPeriod}
+                disabled={currentPeriod >= 0}
+                className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:text-gray-400 rounded-lg flex items-center gap-1"
+              >
+                Siguiente
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+              
+              {currentPeriod !== 0 && (
+                <button
+                  onClick={goToCurrentPeriod}
+                  className="px-3 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-lg flex items-center gap-1"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Actual
+                </button>
+              )}
             </div>
           </div>
           
-          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-green-100">Horas 100%</p>
-                <p className="text-2xl font-bold">{totals.total100}h</p>
-              </div>
-              <div className="text-green-200 text-3xl">100%</div>
-            </div>
-          </div>
-          
-          <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-4 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-purple-100">Total General</p>
-                <p className="text-2xl font-bold">{totals.grandTotal}h</p>
-              </div>
-              <div className="text-purple-200 text-3xl">∑</div>
-            </div>
+          {/* Period History */}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+            {availablePeriods.map((period) => (
+              <button
+                key={period.periodOffset}
+                onClick={() => changePeriod(period.periodOffset)}
+                className={`p-3 rounded-lg text-sm font-medium transition-colors ${
+                  currentPeriod === period.periodOffset
+                    ? 'bg-blue-500 text-white'
+                    : period.isCurrent
+                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <div className="text-xs opacity-75">
+                  {period.startDate.split('-')[1]}/{period.startDate.split('-')[0]}
+                </div>
+                <div className="font-semibold">
+                  {period.monthLabel.split(' ')[0]}
+                </div>
+                {period.isCurrent && (
+                  <div className="text-xs opacity-75">Actual</div>
+                )}
+              </button>
+            ))}
           </div>
         </div>
+        
+        {/* Summary Cards - Only show in summary view */}
+        {viewMode === 'summary' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-blue-100">Horas 50%</p>
+                  <p className="text-2xl font-bold">{totals.total50}h</p>
+                </div>
+                <div className="text-blue-200 text-3xl">50%</div>
+              </div>
+            </div>
+            
+            <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-green-100">Horas 100%</p>
+                  <p className="text-2xl font-bold">{totals.total100}h</p>
+                </div>
+                <div className="text-green-200 text-3xl">100%</div>
+              </div>
+            </div>
+            
+            <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-4 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-purple-100">Total General</p>
+                  <p className="text-2xl font-bold">{totals.grandTotal}h</p>
+                </div>
+                <div className="text-purple-200 text-3xl">∑</div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Overtime Table */}
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-blue-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Usuario
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Rate
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {overtimeData.map((user, userIndex) => (
-                <React.Fragment key={user.userId}>
-                  {user.rates.map((rate, rateIndex) => (
-                    <tr 
-                      key={`${user.userId}-${rate.rate}`}
-                      className={rateIndex === 0 ? 'bg-white' : 'bg-gray-50'}
-                    >
-                      {rateIndex === 0 ? (
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {user.userName}
+      {/* Content based on view mode */}
+      {viewMode === 'summary' ? (
+        /* Summary Table */
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-blue-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Usuario
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Rate
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Total
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {overtimeData.map((user, userIndex) => (
+                  <React.Fragment key={user.userId}>
+                    {user.rates.map((rate, rateIndex) => (
+                      <tr 
+                        key={`${user.userId}-${rate.rate}`}
+                        className={rateIndex === 0 ? 'bg-white' : 'bg-gray-50'}
+                      >
+                        {rateIndex === 0 ? (
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {user.userName}
+                          </td>
+                        ) : (
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {/* Empty cell for subsequent rows */}
+                          </td>
+                        )}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            rate.rate === '50%' 
+                              ? 'bg-blue-100 text-blue-800' 
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {rate.rate}
+                          </span>
                         </td>
-                      ) : (
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {/* Empty cell for subsequent rows */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                          {rate.hours.toFixed(1)}h
                         </td>
-                      )}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          rate.rate === '50%' 
-                            ? 'bg-blue-100 text-blue-800' 
-                            : 'bg-green-100 text-green-800'
-                        }`}>
-                          {rate.rate}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                        {rate.hours.toFixed(1)}h
-                      </td>
-                    </tr>
-                  ))}
-                </React.Fragment>
-              ))}
-              
-              {/* Grand Total Row */}
-              <tr className="bg-blue-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                  Total General
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {/* Empty cell */}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-600">
-                  {totals.grandTotal}h
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                ))}
+                
+                {/* Grand Total Row */}
+                <tr className="bg-blue-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                    Total General
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {/* Empty cell */}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-600">
+                    {totals.grandTotal}h
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      ) : (
+        /* Detail View */
+        renderDetailView()
+      )}
 
       {/* Info Box */}
       <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -321,6 +648,11 @@ const OvertimeHours = () => {
               <p>• <strong>Rate 2.0:</strong> Se cuenta como <strong>100%</strong> (horas extras)</p>
               <p>• <strong>Rate 1.0:</strong> No se incluye (horas normales)</p>
               <p>• <strong>Período:</strong> Del 16 del mes anterior al 15 del mes actual</p>
+              {currentPeriod !== 0 && (
+                <p className="mt-2 text-orange-600 font-semibold">
+                  📅 Visualizando período histórico: {dateRange.monthLabel}
+                </p>
+              )}
             </div>
           </div>
         </div>

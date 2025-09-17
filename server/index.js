@@ -2102,6 +2102,128 @@ app.get('/api/overtime/debug', async (req, res) => {
   }
 });
 
+// Overtime detail endpoint - returns detailed ticket information
+app.get('/api/overtime/detail', async (req, res) => {
+  try {
+    let { startDate, endDate } = req.query;
+    
+    // Si no se proporcionan fechas, usar el período automático
+    if (!startDate || !endDate) {
+      const automaticPeriod = getAutomaticDateRange('month');
+      startDate = automaticPeriod.startDate;
+      endDate = automaticPeriod.endDate;
+      console.log('🔍 Using automatic period for overtime detail:', { startDate, endDate });
+    } else {
+      console.log('🔍 Using provided period for overtime detail:', { startDate, endDate });
+    }
+
+    // Get time entries with rate information
+    const timeEntries = await makeMSPRequest('/tickettimeentriesview', {
+      $select: 'TimeRoundedHrs,StartTime,TicketId,TicketNumber,CustomerName,UserFirstName,UserLastName,UserId,Rate,RateName,Description,CompletedDate',
+      $top: 10000,
+      $orderby: 'StartTime desc'
+    });
+
+    if (!timeEntries.value || timeEntries.value.length === 0) {
+      return res.json({
+        success: true,
+        detailData: [],
+        message: 'No time entries found for the period'
+      });
+    }
+
+    console.log(`📊 Found ${timeEntries.value.length} total time entries for detail view`);
+
+    // Filter entries by date range
+    let debugCount = 0;
+    const filteredEntries = timeEntries.value.filter(entry => {
+      try {
+        const entryDate = moment(entry.StartTime);
+        const start = moment(startDate).startOf('day');
+        const end = moment(endDate).endOf('day');
+        
+        const isInRange = entryDate.isBetween(start, end, 'day', '[]');
+        
+        if (debugCount < 5) {
+          console.log(`🔍 Detail Date filter: ${entryDate.format('YYYY-MM-DD')} - InRange: ${isInRange}`);
+          debugCount++;
+        }
+        
+        return isInRange;
+      } catch (error) {
+        return false;
+      }
+    });
+
+    console.log(`📊 Filtered ${filteredEntries.length} entries for detail calculation`);
+
+    // Process entries to get detailed data
+    const detailData = [];
+    
+    filteredEntries.forEach(entry => {
+      const firstName = entry.UserFirstName || '';
+      const lastName = entry.UserLastName || '';
+      const userName = `${firstName} ${lastName}`.trim();
+      
+      if (!userName || userName === 'Sin Técnico') {
+        return; // Skip entries without technician
+      }
+      
+      // Get rate and check if it's overtime
+      const rate = parseFloat(entry.Rate) || 1.0;
+      const rateName = entry.RateName || '';
+      
+      // Only include overtime entries (rate 1.5 or 2.0, or rate name indicates overtime)
+      const isOvertime = rate === 1.5 || rate === 2.0 || 
+                        (rateName && (rateName.toLowerCase().includes('overtime') || rateName.toLowerCase().includes('extra')));
+      
+      if (isOvertime) {
+        const hours = parseFloat(entry.TimeRoundedHrs) || 0;
+        
+        if (hours > 0) {
+          detailData.push({
+            ticketNumber: entry.TicketNumber || entry.TicketId,
+            customerName: entry.CustomerName || 'Sin Cliente',
+            userName: userName,
+            description: entry.Description || 'Sin descripción',
+            completedDate: entry.CompletedDate || entry.StartTime,
+            rate: rate,
+            rateName: rateName,
+            hours: hours,
+            amount: rate * hours
+          });
+          
+          console.log(`✅ Added detail entry: ${userName} - Ticket #${entry.TicketNumber} - Rate: ${rate} - Hours: ${hours}`);
+        }
+      }
+    });
+
+    // Sort by completed date (newest first)
+    detailData.sort((a, b) => new Date(b.completedDate) - new Date(a.completedDate));
+
+    console.log(`✅ Processed ${detailData.length} detailed entries`);
+    
+    res.json({
+      success: true,
+      detailData: detailData,
+      period: {
+        startDate: startDate,
+        endDate: endDate,
+        totalEntries: filteredEntries.length,
+        overtimeEntries: detailData.length
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching overtime detail:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching overtime detail',
+      error: error.message
+    });
+  }
+});
+
 // Función para obtener IP interna automáticamente
 function getLocalIP() {
   const { networkInterfaces } = require('os');
