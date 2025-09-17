@@ -1763,10 +1763,7 @@ app.get('/api/overtime/hours', async (req, res) => {
       });
     }
 
-    console.log(`📊 Found ${timeEntries.value.length} total time entries`);
-
     // Filter entries by date range (including weekends)
-    let debugCount = 0;
     const filteredEntries = timeEntries.value.filter(entry => {
       try {
         const entryDate = moment(entry.StartTime);
@@ -1776,20 +1773,11 @@ app.get('/api/overtime/hours', async (req, res) => {
         // Check if entry is within date range
         const isInRange = entryDate.isBetween(start, end, 'day', '[]');
         
-        // Debug logging for first few entries
-        if (debugCount < 5) {
-          console.log(`🔍 Date filter: ${entryDate.format('YYYY-MM-DD')} - InRange: ${isInRange}`);
-          debugCount++;
-        }
-        
         return isInRange;
       } catch (error) {
-        console.error('❌ Error filtering entry date:', error.message);
         return false;
       }
     });
-
-    console.log(`📊 Filtered ${filteredEntries.length} entries for overtime calculation`);
 
     // Group hours by user and rate
     const userHours = {};
@@ -1809,37 +1797,24 @@ app.get('/api/overtime/hours', async (req, res) => {
       const rateName = entry.RateName || '';
       let ratePercentage = '';
       
-      // Debug logging for rate processing
-      if (entry.Rate !== undefined && entry.Rate !== null) {
-        console.log(`🔍 Processing entry: ${entry.UserFirstName} ${entry.UserLastName} - Rate: ${entry.Rate}, RateName: ${rateName}, Hours: ${entry.TimeRoundedHrs}`);
-      } else {
-        console.log(`⚠️ No Rate field for: ${entry.UserFirstName} ${entry.UserLastName}`);
-      }
+      // Process rate silently
       
       // Check rate value first
       if (rate === 1.5) {
         ratePercentage = '50%';
-        console.log(`✅ Found 50% rate: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h`);
       } else if (rate === 2.0) {
         ratePercentage = '100%';
-        console.log(`✅ Found 100% rate: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h`);
       } else if (rateName && (rateName.toLowerCase().includes('overtime') || rateName.toLowerCase().includes('extra'))) {
         // Check rate name for overtime indicators
         if (rateName.toLowerCase().includes('50') || rateName.toLowerCase().includes('1.5')) {
           ratePercentage = '50%';
-          console.log(`✅ Found 50% rate by name: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h (${rateName})`);
         } else if (rateName.toLowerCase().includes('100') || rateName.toLowerCase().includes('2.0') || rateName.toLowerCase().includes('double')) {
           ratePercentage = '100%';
-          console.log(`✅ Found 100% rate by name: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h (${rateName})`);
         } else {
           // Generic overtime rate name
           ratePercentage = '50%';
-          console.log(`✅ Found overtime by name: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h (${rateName})`);
         }
       } else {
-        if (rate !== 1.0) {
-          console.log(`⚠️ Skipping rate ${rate} (${rateName}): ${entry.UserFirstName} ${entry.UserLastName}`);
-        }
         return; // Skip normal hours (rate 1.0)
       }
       
@@ -1889,28 +1864,7 @@ app.get('/api/overtime/hours', async (req, res) => {
       return totalB - totalA;
     });
 
-    console.log(`✅ Processed ${overtimeData.length} users with overtime hours`);
-    
-    // No sample data generation - show real data only
-    
-    // Log some sample data for debugging
-    overtimeData.slice(0, 3).forEach(user => {
-      console.log(`👤 ${user.userName}:`, user.rates.map(r => `${r.rate}: ${r.hours}h`).join(', '));
-    });
-    
-    // Log sample entries to see what fields are available
-    if (filteredEntries.length > 0) {
-      const sampleEntry = filteredEntries[0];
-      console.log('🔍 Sample entry fields:', Object.keys(sampleEntry));
-      console.log('🔍 Sample entry values:', {
-        Rate: sampleEntry.Rate,
-        RateName: sampleEntry.RateName,
-        TimeRoundedHrs: sampleEntry.TimeRoundedHrs,
-        UserFirstName: sampleEntry.UserFirstName,
-        UserLastName: sampleEntry.UserLastName,
-        CustomerName: sampleEntry.CustomerName
-      });
-    }
+    // Processed overtime data silently
 
     res.json({
       success: true,
@@ -2109,10 +2063,7 @@ app.get('/api/overtime/detail', async (req, res) => {
       });
     }
 
-    console.log(`📊 Found ${timeEntries.value.length} total time entries for detail view`);
-
     // Filter entries by date range
-    let debugCount = 0;
     const filteredEntries = timeEntries.value.filter(entry => {
       try {
         const entryDate = moment(entry.StartTime);
@@ -2121,24 +2072,11 @@ app.get('/api/overtime/detail', async (req, res) => {
         
         const isInRange = entryDate.isBetween(start, end, 'day', '[]');
         
-        if (debugCount < 5) {
-          console.log(`🔍 Detail Date filter: ${entryDate.format('YYYY-MM-DD')} - InRange: ${isInRange}`);
-          debugCount++;
-        }
-        
         return isInRange;
       } catch (error) {
         return false;
       }
     });
-
-    console.log(`📊 Filtered ${filteredEntries.length} entries for detail calculation`);
-
-    // Debug: Show unique RateName values to understand the data
-    const uniqueRateNames = [...new Set(filteredEntries.map(entry => entry.RateName))];
-    const uniqueRates = [...new Set(filteredEntries.map(entry => entry.Rate))];
-    console.log(`🔍 Unique RateNames found:`, uniqueRateNames);
-    console.log(`🔍 Unique Rates found:`, uniqueRates);
 
     // Process entries to get detailed data - using EXACT same logic as overtime/hours endpoint
     const detailData = [];
@@ -2157,37 +2095,24 @@ app.get('/api/overtime/detail', async (req, res) => {
       const rateName = entry.RateName || '';
       let ratePercentage = '';
       
-      // Debug logging for rate processing
-      if (entry.Rate !== undefined && entry.Rate !== null) {
-        console.log(`🔍 Detail processing: ${entry.UserFirstName} ${entry.UserLastName} - Rate: ${entry.Rate}, RateName: ${rateName}, Hours: ${entry.TimeRoundedHrs}`);
-      } else {
-        console.log(`⚠️ No Rate field for: ${entry.UserFirstName} ${entry.UserLastName}`);
-      }
+      // Process rate silently
       
       // Check rate value first - EXACT same logic as overtime/hours endpoint
       if (rate === 1.5) {
         ratePercentage = '50%';
-        console.log(`✅ Found 50% rate: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h`);
       } else if (rate === 2.0) {
         ratePercentage = '100%';
-        console.log(`✅ Found 100% rate: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h`);
       } else if (rateName && (rateName.toLowerCase().includes('overtime') || rateName.toLowerCase().includes('extra'))) {
         // Check rate name for overtime indicators
         if (rateName.toLowerCase().includes('50') || rateName.toLowerCase().includes('1.5')) {
           ratePercentage = '50%';
-          console.log(`✅ Found 50% rate by name: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h (${rateName})`);
         } else if (rateName.toLowerCase().includes('100') || rateName.toLowerCase().includes('2.0') || rateName.toLowerCase().includes('double')) {
           ratePercentage = '100%';
-          console.log(`✅ Found 100% rate by name: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h (${rateName})`);
         } else {
           // Generic overtime rate name
           ratePercentage = '50%';
-          console.log(`✅ Found overtime by name: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h (${rateName})`);
         }
       } else {
-        if (rate !== 1.0) {
-          console.log(`⚠️ Skipping rate ${rate} (${rateName}): ${entry.UserFirstName} ${entry.UserLastName}`);
-        }
         return; // Skip normal hours (rate 1.0)
       }
       
@@ -2207,14 +2132,14 @@ app.get('/api/overtime/detail', async (req, res) => {
           amount: rate * hours
         });
         
-        console.log(`✅ Added detail entry: ${userName} - Ticket #${entry.TicketNumber} - Rate: ${rate} (${ratePercentage}) - Hours: ${hours}`);
+        // Added detail entry silently
       }
     });
 
     // Sort by user name (alphabetical)
     detailData.sort((a, b) => a.userName.localeCompare(b.userName));
 
-    console.log(`✅ Processed ${detailData.length} detailed entries`);
+    // Processed detailed entries silently
     
     res.json({
       success: true,
