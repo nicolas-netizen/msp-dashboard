@@ -15,6 +15,7 @@ const OvertimeHours = () => {
   const [availablePeriods, setAvailablePeriods] = useState([]);
   const [viewMode, setViewMode] = useState('summary'); // 'summary' or 'detail'
   const [detailData, setDetailData] = useState([]);
+  const [userFilter, setUserFilter] = useState(''); // Filter by user name
 
   // Calculate date range for a specific period offset
   const calculateDateRange = (periodOffset = 0) => {
@@ -227,47 +228,35 @@ const OvertimeHours = () => {
       );
     }
 
+    // Filter and sort data
+    const filteredData = detailData
+      .filter(entry => 
+        userFilter === '' || 
+        entry.userName.toLowerCase().includes(userFilter.toLowerCase())
+      )
+      .sort((a, b) => a.userName.localeCompare(b.userName));
+
+    // Get unique users for filter dropdown
+    const uniqueUsers = [...new Set(detailData.map(entry => entry.userName))].sort();
+
     return (
       <div className="space-y-6">
-        {/* Summary for detail view */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-blue-100">Total Tickets</p>
-                <p className="text-2xl font-bold">{detailData.length}</p>
-              </div>
-              <div className="text-blue-200 text-3xl">🎫</div>
-            </div>
-          </div>
-          
-          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-green-100">Horas 50%</p>
-                <p className="text-2xl font-bold">
-                  {detailData
-                    .filter(entry => entry.rate === 1.5)
-                    .reduce((sum, entry) => sum + (parseFloat(entry.hours) || 0), 0)
-                    .toFixed(1)}h
-                </p>
-              </div>
-              <div className="text-green-200 text-3xl">50%</div>
-            </div>
-          </div>
-          
-          <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-4 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-purple-100">Horas 100%</p>
-                <p className="text-2xl font-bold">
-                  {detailData
-                    .filter(entry => entry.rate === 2.0)
-                    .reduce((sum, entry) => sum + (parseFloat(entry.hours) || 0), 0)
-                    .toFixed(1)}h
-                </p>
-              </div>
-              <div className="text-purple-200 text-3xl">100%</div>
+        {/* User Filter */}
+        <div className="bg-white p-4 rounded-lg shadow-md">
+          <div className="flex items-center gap-4">
+            <label className="text-sm font-medium text-gray-700">Filtrar por usuario:</label>
+            <select
+              value={userFilter}
+              onChange={(e) => setUserFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Todos los usuarios</option>
+              {uniqueUsers.map(user => (
+                <option key={user} value={user}>{user}</option>
+              ))}
+            </select>
+            <div className="text-sm text-gray-500">
+              Mostrando {filteredData.length} de {detailData.length} tickets
             </div>
           </div>
         </div>
@@ -310,7 +299,7 @@ const OvertimeHours = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {detailData.map((entry, index) => (
+                {filteredData.map((entry, index) => (
                   <tr key={index} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       #{entry.ticketNumber}
