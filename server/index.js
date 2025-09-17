@@ -1891,30 +1891,7 @@ app.get('/api/overtime/hours', async (req, res) => {
 
     console.log(`✅ Processed ${overtimeData.length} users with overtime hours`);
     
-    // If no overtime data found, create sample data for testing
-    if (overtimeData.length === 0 && filteredEntries.length > 0) {
-      console.log('📝 No overtime hours found, creating sample data for testing...');
-      
-      // Get unique users from filtered entries
-      const uniqueUsers = {};
-      filteredEntries.forEach(entry => {
-        const userId = entry.UserId || `${entry.UserFirstName}-${entry.UserLastName}`;
-        const userName = `${entry.UserFirstName} ${entry.UserLastName}`.trim();
-        if (!uniqueUsers[userId]) {
-          uniqueUsers[userId] = {
-            userId: userId,
-            userName: userName,
-            rates: [
-              { rate: '50%', hours: 2.5 },
-              { rate: '100%', hours: 1.0 }
-            ]
-          };
-        }
-      });
-      
-      overtimeData.push(...Object.values(uniqueUsers));
-      console.log(`📝 Created ${overtimeData.length} sample users with overtime hours`);
-    }
+    // No sample data generation - show real data only
     
     // Log some sample data for debugging
     overtimeData.slice(0, 3).forEach(user => {

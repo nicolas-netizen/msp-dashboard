@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import moment from 'moment';
 import 'moment/locale/es';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 moment.locale('es');
 
@@ -16,6 +18,7 @@ const OvertimeHours = () => {
   const [viewMode, setViewMode] = useState('summary'); // 'summary' or 'detail'
   const [detailData, setDetailData] = useState([]);
   const [userFilter, setUserFilter] = useState(''); // Filter by user name
+  const contentRef = useRef(null); // Reference for PDF export
 
   // Calculate date range for a specific period offset
   const calculateDateRange = (periodOffset = 0) => {
@@ -151,6 +154,78 @@ const OvertimeHours = () => {
       fetchOvertimeHours(range.startDate, range.endDate);
     } else {
       fetchDetailData(range.startDate, range.endDate);
+    }
+  };
+
+  // Export to PDF function
+  const exportToPDF = async () => {
+    if (!contentRef.current) return;
+
+    try {
+      // Show loading state
+      const exportButton = document.querySelector('[data-export-button]');
+      if (exportButton) {
+        exportButton.disabled = true;
+        exportButton.textContent = 'Generando PDF...';
+      }
+
+      // Capture the content
+      const canvas = await html2canvas(contentRef.current, {
+        scale: 2, // Higher quality
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        width: contentRef.current.scrollWidth,
+        height: contentRef.current.scrollHeight
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      
+      // Create PDF
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 295; // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+
+      let position = 0;
+
+      // Add first page
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // Add additional pages if needed
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      // Generate filename with current date and period
+      const currentDate = moment().format('YYYY-MM-DD');
+      const periodLabel = dateRange.label || 'periodo-actual';
+      const filename = `horas-extras-${periodLabel}-${currentDate}.pdf`;
+
+      // Save the PDF
+      pdf.save(filename);
+
+      // Reset button state
+      if (exportButton) {
+        exportButton.disabled = false;
+        exportButton.textContent = 'Exportar';
+      }
+
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error al generar el PDF. Por favor, inténtalo de nuevo.');
+      
+      // Reset button state
+      const exportButton = document.querySelector('[data-export-button]');
+      if (exportButton) {
+        exportButton.disabled = false;
+        exportButton.textContent = 'Exportar';
+      }
     }
   };
 
@@ -293,9 +368,6 @@ const OvertimeHours = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Horas
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total
-                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -329,9 +401,6 @@ const OvertimeHours = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {parseFloat(entry.hours).toFixed(2)}h
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      ${(entry.rate * parseFloat(entry.hours)).toFixed(2)}
                     </td>
                   </tr>
                 ))}
@@ -372,7 +441,7 @@ const OvertimeHours = () => {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto" ref={contentRef}>
       {/* Header */}
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
         <div className="flex justify-between items-center mb-4">
@@ -418,13 +487,14 @@ const OvertimeHours = () => {
               Actualizar
             </button>
             <button
-              onClick={() => window.print()}
-              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+              onClick={exportToPDF}
+              data-export-button
+              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              Exportar
+              Exportar PDF
             </button>
           </div>
         </div>
