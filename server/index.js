@@ -1823,29 +1823,14 @@ app.get('/api/overtime/hours', async (req, res) => {
       } else if (rate === 2.0) {
         ratePercentage = '100%';
         console.log(`✅ Found 100% rate: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h`);
-      } else if (rateName && (
-        rateName.toLowerCase().includes('overtime') || 
-        rateName.toLowerCase().includes('extra') ||
-        rateName.toLowerCase().includes('finde') ||
-        rateName.toLowerCase().includes('feriado') ||
-        rateName.toLowerCase().includes('nocturno') ||
-        rateName.toLowerCase().includes('hs-sn1') ||
-        rateName.toLowerCase().includes('hs-sn2') ||
-        rateName.toLowerCase().includes('50') ||
-        rateName.toLowerCase().includes('100') ||
-        rateName.toLowerCase().includes('double')
-      )) {
+      } else if (rateName && (rateName.toLowerCase().includes('overtime') || rateName.toLowerCase().includes('extra'))) {
         // Check rate name for overtime indicators
-        if (rateName.toLowerCase().includes('50') || rateName.toLowerCase().includes('1.5') || rateName.toLowerCase().includes('hs-sn1')) {
+        if (rateName.toLowerCase().includes('50') || rateName.toLowerCase().includes('1.5')) {
           ratePercentage = '50%';
           console.log(`✅ Found 50% rate by name: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h (${rateName})`);
-        } else if (rateName.toLowerCase().includes('100') || rateName.toLowerCase().includes('2.0') || rateName.toLowerCase().includes('double') || rateName.toLowerCase().includes('finde') || rateName.toLowerCase().includes('feriado')) {
+        } else if (rateName.toLowerCase().includes('100') || rateName.toLowerCase().includes('2.0') || rateName.toLowerCase().includes('double')) {
           ratePercentage = '100%';
           console.log(`✅ Found 100% rate by name: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h (${rateName})`);
-        } else if (rateName.toLowerCase().includes('hs-sn2')) {
-          // HS-SN2 could be 50% or 100% depending on context, default to 50%
-          ratePercentage = '50%';
-          console.log(`✅ Found HS-SN2 rate by name: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h (${rateName}) - defaulting to 50%`);
         } else {
           // Generic overtime rate name
           ratePercentage = '50%';
@@ -2209,29 +2194,14 @@ app.get('/api/overtime/detail', async (req, res) => {
       } else if (rate === 2.0) {
         ratePercentage = '100%';
         console.log(`✅ Found 100% rate: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h`);
-      } else if (rateName && (
-        rateName.toLowerCase().includes('overtime') || 
-        rateName.toLowerCase().includes('extra') ||
-        rateName.toLowerCase().includes('finde') ||
-        rateName.toLowerCase().includes('feriado') ||
-        rateName.toLowerCase().includes('nocturno') ||
-        rateName.toLowerCase().includes('hs-sn1') ||
-        rateName.toLowerCase().includes('hs-sn2') ||
-        rateName.toLowerCase().includes('50') ||
-        rateName.toLowerCase().includes('100') ||
-        rateName.toLowerCase().includes('double')
-      )) {
+      } else if (rateName && (rateName.toLowerCase().includes('overtime') || rateName.toLowerCase().includes('extra'))) {
         // Check rate name for overtime indicators
-        if (rateName.toLowerCase().includes('50') || rateName.toLowerCase().includes('1.5') || rateName.toLowerCase().includes('hs-sn1')) {
+        if (rateName.toLowerCase().includes('50') || rateName.toLowerCase().includes('1.5')) {
           ratePercentage = '50%';
           console.log(`✅ Found 50% rate by name: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h (${rateName})`);
-        } else if (rateName.toLowerCase().includes('100') || rateName.toLowerCase().includes('2.0') || rateName.toLowerCase().includes('double') || rateName.toLowerCase().includes('finde') || rateName.toLowerCase().includes('feriado')) {
+        } else if (rateName.toLowerCase().includes('100') || rateName.toLowerCase().includes('2.0') || rateName.toLowerCase().includes('double')) {
           ratePercentage = '100%';
           console.log(`✅ Found 100% rate by name: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h (${rateName})`);
-        } else if (rateName.toLowerCase().includes('hs-sn2')) {
-          // HS-SN2 could be 50% or 100% depending on context, default to 50%
-          ratePercentage = '50%';
-          console.log(`✅ Found HS-SN2 rate by name: ${entry.UserFirstName} ${entry.UserLastName} - ${entry.TimeRoundedHrs}h (${rateName}) - defaulting to 50%`);
         } else {
           // Generic overtime rate name
           ratePercentage = '50%';
